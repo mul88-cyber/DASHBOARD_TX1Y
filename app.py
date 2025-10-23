@@ -311,22 +311,14 @@ with tab2:
                 secondary_y=True, # <-- KANAN
             )
 
-            # PERBAIKAN: Mengatur Sumbu Y langsung di update_layout
+            # PERBAIKAN: Menghapus semua konfigurasi yaxis= dan yaxis2=
+            # untuk membiarkan Plotly menggunakan default
+            # Ini adalah upaya terakhir untuk memperbaiki bug label hilang
             fig_dual.update_layout(
                 title_text=f"Pergerakan Harga vs. Net Foreign Flow - {stock_to_analyze}",
                 xaxis_title="Tanggal",
                 legend_title="Legenda",
-                hovermode="x unified",
-                # Sumbu Y Kiri (NFF)
-                yaxis=dict(
-                    title_text="Net Foreign Flow",
-                    showticklabels=True # <-- PAKSA MUNCUL
-                ),
-                # Sumbu Y Kanan (Harga)
-                yaxis2=dict(
-                    title_text="Harga (Close) (Rp)",
-                    showticklabels=True # <-- PAKSA MUNCUL
-                )
+                hovermode="x unified"
             )
             
             st.plotly_chart(fig_dual, use_container_width=True)
@@ -354,14 +346,11 @@ with tab2:
                 hovertemplate='<b>MA20 Vol</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
             )
             
-            # PERBAIKAN: Mengatur Sumbu Y langsung di update_layout
+            # PERBAIKAN: Menghapus semua konfigurasi yaxis=
+            # untuk membiarkan Plotly menggunakan default
             fig_vol.update_layout(
                 xaxis_title="Tanggal", 
-                hovermode="x unified",
-                yaxis=dict(
-                    title_text="Volume",
-                    showticklabels=True # <-- PAKSA MUNCUL
-                )
+                hovermode="x unified"
             )
             st.plotly_chart(fig_vol, use_container_width=True)
 
