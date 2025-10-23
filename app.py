@@ -20,18 +20,23 @@ st.caption("Menganalisis data historis untuk menemukan saham potensial.")
 # =====================================================================
 # 📦 MEMUAT DAN MEMBERSIHKAN DATA (dari Google Drive)
 # =====================================================================
-FILE_ID = "1A3eqXBUhzOTOQ1QR72ArEbLhGCTtYQ3L"
+
+# ID File Google Drive Anda sudah dimasukkan di sini
+FILE_ID = "1A3eqXBUhzOTOQ1QR72ArEbLhGCTtYQ3L" 
 URL = f"https.drive.google.com/uc?id={FILE_ID}"
 
 @st.cache_data(ttl=3600)
 def load_data():
-# ... (kode load_data tidak berubah) ...
     try:
-        gdown.download(URL, "data.csv", quiet=True)
+        # Coba download file dari GDrive
+        gdown.download(URL, "data.csv", quiet=True, fuzzy=True) # fuzzy=True membantu handle link
         df = pd.read_csv("data.csv")
+        
+        # Bersihkan nama kolom
         df.columns = df.columns.str.strip()
         df['Last Trading Date'] = pd.to_datetime(df['Last Trading Date'])
         
+        # Konversi kolom-kolom penting ke numerik
         cols_to_numeric = [
             'Change %', 'Typical Price', 'TPxV', 'VWMA_20D', 'MA20_vol', 
             'MA5_vol', 'Volume Spike (x)', 'Net Foreign Flow', 
@@ -41,6 +46,7 @@ def load_data():
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
+        # Bersihkan kolom 'Unusual Volume'
         if 'Unusual Volume' in df.columns:
             if df['Unusual Volume'].dtype == 'object':
                 df['Unusual Volume'] = df['Unusual Volume'].str.strip().str.lower().isin(['spike volume signifikan', 'true'])
@@ -50,13 +56,14 @@ def load_data():
         return df
     
     except Exception as e:
+        # Tampilkan error jika GDrive gagal (misal: 404 Not Found)
         st.error(f"❌ Gagal membaca data dari Google Drive: {e}")
+        st.error(f"Pastikan FILE_ID ('{FILE_ID}') sudah benar dan file disetel ke 'Publik' (Siapa saja yang memiliki link).")
         return pd.DataFrame()
 
 df = load_data()
 
 if df.empty:
-# ... (kode filter sidebar tidak berubah) ...
     st.warning("⚠️ Data belum berhasil dimuat. Aplikasi tidak dapat dilanjutkan.")
     st.stop()
 
@@ -117,10 +124,12 @@ if selected_sectors:
 if selected_signals:
     df_filtered = df_filtered[df_filtered["Final Signal"].isin(selected_signals)]
 
-df_filtered = df_filtered[df_filtered["Volume Spike (x)"] >= min_spike]
+if not df_filtered.empty:
+    df_filtered = df_filtered[df_filtered["Volume Spike (x)"] >= min_spike]
 
 if show_only_spike:
-    df_filtered = df_filtered[df_filtered["Unusual Volume"] == True]
+    if not df_filtered.empty:
+        df_filtered = df_filtered[df_filtered["Unusual Volume"] == True]
 
 # =====================================================================
 #  LAYOUT UTAMA (DENGAN TABS)
@@ -135,7 +144,6 @@ tab1, tab2, tab3 = st.tabs([
 
 # --- TAB 1: DASHBOARD HARIAN ---
 with tab1:
-# ... (kode metrik tidak berubah) ...
     st.subheader("Ringkasan Pasar (pada tanggal terpilih)")
     
     col1, col2, col3 = st.columns(3)
@@ -155,8 +163,8 @@ with tab1:
             top_gainers[['Stock Code', 'Close', 'Change %']], 
             use_container_width=True, 
             hide_index=True,
-            format={"Close": "Rp {:,.0f}"}, # <-- PERBAIKAN: Hapus 'Change %' dari sini
-            column_config={ # <-- PERBAIKAN: Tambahkan column_config
+            format={"Close": "Rp {:,.0f}"}, # Hapus 'Change %' dari sini
+            column_config={ # Ini adalah perbaikan untuk error desimal
                 "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%")
             }
         )
@@ -168,21 +176,20 @@ with tab1:
             top_losers[['Stock Code', 'Close', 'Change %']], 
             use_container_width=True, 
             hide_index=True,
-            format={"Close": "Rp {:,.0f}"}, # <-- PERBAIKAN: Hapus 'Change %' dari sini
-            column_config={ # <-- PERBAIKAN: Tambahkan column_config
+            format={"Close": "Rp {:,.0f}"}, # Hapus 'Change %' dari sini
+            column_config={ # Ini adalah perbaikan untuk error desimal
                 "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%")
             }
         )
         
     with col_v:
         st.markdown("**Top 10 by Value**")
-# ... (kode col_v dan chart tidak berubah) ...
         top_value = df_day.sort_values("Value", ascending=False).head(10)
         st.dataframe(
             top_value[['Stock Code', 'Close', 'Value']], 
             use_container_width=True, 
             hide_index=True,
-            format={"Close": "Rp {:,.0f}", "Value": "Rp {:,.0f}"} # Format angka (Ini OK, tidak ada %)
+            format={"Close": "Rp {:,.0f}", "Value": "Rp {:,.0f}"}
         )
 
     st.markdown("---")
@@ -199,7 +206,7 @@ with tab1:
                 x="Final Signal", 
                 y="count", 
                 title="Distribusi Final Signal",
-                text='count' # Tampilkan angka di bar
+                text='count' 
             )
             fig_sig.update_layout(yaxis_title="Jumlah Saham", yaxis_tickformat_=',.0f')
             fig_sig.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
@@ -217,7 +224,7 @@ with tab1:
                 x="Sector", 
                 y="count", 
                 title="Distribusi Sektor (Hanya Unusual Volume)",
-                text='count' # Tampilkan angka di bar
+                text='count' 
             )
             fig_sec.update_layout(yaxis_title="Jumlah Saham", yaxis_tickformat_=',.0f')
             fig_sec.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
@@ -228,7 +235,6 @@ with tab1:
 
 # --- TAB 2: ANALISIS INDIVIDUAL ---
 with tab2:
-# ... (kode tab 2 tidak berubah) ...
     st.subheader("Analisis Time Series Saham Individual")
     
     all_stocks = sorted(df["Stock Code"].dropna().unique())
@@ -247,24 +253,20 @@ with tab2:
             st.info(f"Menampilkan data untuk: **{df_stock.iloc[0]['Company Name']} ({stock_to_analyze})**")
             
             # --- START: Chart Dual-Axis (Harga vs NFF) ---
-            # 1. Buat figure dengan secondary y-axis
             fig_dual = make_subplots(specs=[[{"secondary_y": True}]])
 
-            # 2. Tambahkan trace Harga (Line) ke y-axis primer (kiri)
             fig_dual.add_trace(
                 go.Scatter(
                     x=df_stock['Last Trading Date'],
                     y=df_stock['Close'],
                     name="Harga (Close)",
                     mode='lines',
-                    line=dict(color='#1f77b4'), # Biru
+                    line=dict(color='#1f77b4'), 
                     hovertemplate='<b>Harga</b>: Rp %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
                 ),
                 secondary_y=False,
             )
 
-            # 3. Tambahkan trace Net Foreign Flow (Bar) ke y-axis sekunder (kanan)
-            # Beri warna bar: hijau jika positif (buy), merah jika negatif (sell)
             colors_nff = ['#2ca02c' if v > 0 else '#d62728' for v in df_stock['Net Foreign Flow']]
             fig_dual.add_trace(
                 go.Bar(
@@ -278,26 +280,23 @@ with tab2:
                 secondary_y=True,
             )
 
-            # 4. Atur layout dan judul axis
             fig_dual.update_layout(
                 title_text=f"Pergerakan Harga vs. Net Foreign Flow - {stock_to_analyze}",
                 xaxis_title="Tanggal",
                 legend_title="Legenda",
-                hovermode="x unified" # Mode hover yang lebih baik
+                hovermode="x unified" 
             )
             
-            # 5. Atur axis kiri (Harga)
             fig_dual.update_yaxes(
                 title_text="Harga (Close) (Rp)",
                 secondary_y=False,
-                tickformat_=',.0f' # Format angka axis
+                tickformat_=',.0f' 
             )
             
-            # 6. Atur axis kanan (NFF)
             fig_dual.update_yaxes(
                 title_text="Net Foreign Flow",
                 secondary_y=True,
-                tickformat_=',.0f' # Format angka axis
+                tickformat_=',.0f' 
             )
             
             st.plotly_chart(fig_dual, use_container_width=True)
@@ -315,7 +314,6 @@ with tab2:
                     'Volume': ':,.0f'
                 }
             )
-            # Tambahkan garis MA20
             fig_vol.add_scatter(
                 x=df_stock['Last Trading Date'], 
                 y=df_stock['MA20_vol'], 
@@ -327,7 +325,7 @@ with tab2:
             fig_vol.update_layout(
                 xaxis_title="Tanggal", 
                 yaxis_title="Volume",
-                yaxis_tickformat_=',.0f', # Format angka axis
+                yaxis_tickformat_=',.0f', 
                 hovermode="x unified"
             )
             st.plotly_chart(fig_vol, use_container_width=True)
@@ -344,10 +342,8 @@ with tab3:
     ]
     available_columns = [col for col in columns_to_show if col in df_filtered.columns]
     
-    # Definisikan format untuk tabel
     format_dict = {
         "Close": "Rp {:,.0f}",
-        # "Change %": "{:.2f}%", # <-- PERBAIKAN: Hapus dari sini
         "Volume": "{:,.0f}",
         "Volume Spike (x)": "{:.2f}x",
         "Net Foreign Flow": "{:,.0f}"
@@ -357,8 +353,8 @@ with tab3:
         df_filtered[available_columns].sort_values("Volume Spike (x)", ascending=False),
         use_container_width=True,
         hide_index=True,
-        format=format_dict, # Terapkan format angka
-        column_config={ # <-- PERBAIKAN: Tambahkan column_config
+        format=format_dict, 
+        column_config={ # Ini adalah perbaikan untuk error desimal
             "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%")
         }
     )
