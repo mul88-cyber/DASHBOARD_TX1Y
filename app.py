@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import gdown  # Ditambahkan kembali
 
 # =====================================================================
 # ⚙️ KONFIGURASI DASHBOARD
@@ -15,21 +16,26 @@ st.title("📈 Dashboard Analisis Saham IDX")
 st.caption("Menganalisis data historis untuk menemukan saham potensial.")
 
 # =====================================================================
-# 📦 MEMUAT DAN MEMBERSIHKAN DATA
+# 📦 MEMUAT DAN MEMBERSIHKAN DATA (dari Google Drive)
 # =====================================================================
-FILE_PATH = "Kompilasi_Data_1Tahun.csv"
+# ID file CSV publik (dari link Google Drive)
+FILE_ID = "1A3eqXBUhzOTOQ1QR72ArEbLhGCTtYQ3L"
+URL = f"https://drive.google.com/uc?id={FILE_ID}"
 
 @st.cache_data(ttl=3600)
-def load_data(file_path):
+def load_data():
     try:
-        df = pd.read_csv(file_path)
-        # 1. Bersihkan nama kolom (hapus spasi)
+        # 1. Download data dari Google Drive
+        gdown.download(URL, "data.csv", quiet=True)
+        df = pd.read_csv("data.csv")
+        
+        # 2. Bersihkan nama kolom (hapus spasi)
         df.columns = df.columns.str.strip()
         
-        # 2. Ubah tipe data Tanggal
+        # 3. Ubah tipe data Tanggal
         df['Last Trading Date'] = pd.to_datetime(df['Last Trading Date'])
         
-        # 3. Ubah tipe data Numerik (paksa jika ada error)
+        # 4. Ubah tipe data Numerik (paksa jika ada error)
         cols_to_numeric = [
             'Change %', 'Typical Price', 'TPxV', 'VWMA_20D', 'MA20_vol', 
             'MA5_vol', 'Volume Spike (x)', 'Net Foreign Flow', 
@@ -39,7 +45,7 @@ def load_data(file_path):
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        # 4. Normalisasi 'Unusual Volume' (handle boolean True/False atau string)
+        # 5. Normalisasi 'Unusual Volume' (handle boolean True/False atau string)
         if 'Unusual Volume' in df.columns:
             if df['Unusual Volume'].dtype == 'object':
                 # Jika datanya string, ubah "Spike Volume Signifikan" (atau variasinya) menjadi True
@@ -49,14 +55,11 @@ def load_data(file_path):
         df = df.dropna(subset=['Last Trading Date', 'Stock Code'])
         return df
     
-    except FileNotFoundError:
-        st.error(f"❌ File '{file_path}' tidak ditemukan. Pastikan file ada di folder yang sama.")
-        return pd.DataFrame()
     except Exception as e:
-        st.error(f"❌ Gagal memuat data: {e}")
+        st.error(f"❌ Gagal membaca data dari Google Drive: {e}")
         return pd.DataFrame()
 
-df = load_data(FILE_PATH)
+df = load_data()
 
 if df.empty:
     st.warning("⚠️ Data belum berhasil dimuat. Aplikasi tidak dapat dilanjutkan.")
@@ -276,4 +279,4 @@ with tab3:
     )
 
 st.markdown("---")
-st.info("Pastikan file `Kompilasi_Data_1Tahun.csv` berada di folder yang sama dengan `app.py` ini.")
+st.info("Data diambil dari Google Drive dan di-cache selama 1 jam. Refresh halaman untuk data terbaru.")
