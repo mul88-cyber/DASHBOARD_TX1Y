@@ -1,7 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import gdown  # Ditambahkan kembali
+import plotly.graph_objects as go # Diperlukan untuk dual-axis chart
+from plotly.subplots import make_subplots # Diperlukan untuk dual-axis chart
+import gdown
 
 # =====================================================================
 # ⚙️ KONFIGURASI DASHBOARD
@@ -18,24 +20,17 @@ st.caption("Menganalisis data historis untuk menemukan saham potensial.")
 # =====================================================================
 # 📦 MEMUAT DAN MEMBERSIHKAN DATA (dari Google Drive)
 # =====================================================================
-# ID file CSV publik (dari link Google Drive)
 FILE_ID = "1A3eqXBUhzOTOQ1QR72ArEbLhGCTtYQ3L"
-URL = f"https://drive.google.com/uc?id={FILE_ID}"
+URL = f"https.drive.google.com/uc?id={FILE_ID}"
 
 @st.cache_data(ttl=3600)
 def load_data():
     try:
-        # 1. Download data dari Google Drive
         gdown.download(URL, "data.csv", quiet=True)
         df = pd.read_csv("data.csv")
-        
-        # 2. Bersihkan nama kolom (hapus spasi)
         df.columns = df.columns.str.strip()
-        
-        # 3. Ubah tipe data Tanggal
         df['Last Trading Date'] = pd.to_datetime(df['Last Trading Date'])
         
-        # 4. Ubah tipe data Numerik (paksa jika ada error)
         cols_to_numeric = [
             'Change %', 'Typical Price', 'TPxV', 'VWMA_20D', 'MA20_vol', 
             'MA5_vol', 'Volume Spike (x)', 'Net Foreign Flow', 
@@ -45,10 +40,8 @@ def load_data():
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        # 5. Normalisasi 'Unusual Volume' (handle boolean True/False atau string)
         if 'Unusual Volume' in df.columns:
             if df['Unusual Volume'].dtype == 'object':
-                # Jika datanya string, ubah "Spike Volume Signifikan" (atau variasinya) menjadi True
                 df['Unusual Volume'] = df['Unusual Volume'].str.strip().str.lower().isin(['spike volume signifikan', 'true'])
             df['Unusual Volume'] = df['Unusual Volume'].astype(bool)
         
@@ -70,7 +63,6 @@ if df.empty:
 # =====================================================================
 st.sidebar.header("🎛️ Filter Analisis Harian")
 
-# --- Filter Tanggal ---
 max_date = df['Last Trading Date'].max().date()
 selected_date = st.sidebar.date_input(
     "Pilih Tanggal Analisis",
@@ -80,10 +72,8 @@ selected_date = st.sidebar.date_input(
     format="DD-MM-YYYY"
 )
 
-# --- Filter Data Harian (berdasarkan tanggal terpilih) ---
 df_day = df[df['Last Trading Date'].dt.date == selected_date].copy()
 
-# --- Filter Lanjutan ---
 st.sidebar.header("Filter Data Lanjutan")
 selected_stocks = st.sidebar.multiselect(
     "Pilih Saham (Stock Code)",
@@ -146,8 +136,8 @@ with tab1:
     st.subheader("Ringkasan Pasar (pada tanggal terpilih)")
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total Saham Aktif", f"{len(df_day['Stock Code'].unique())}")
-    col2.metric("Saham Unusual Volume", f"{int(df_day['Unusual Volume'].sum())}")
+    col1.metric("Total Saham Aktif", f"{len(df_day['Stock Code'].unique()):,.0f}")
+    col2.metric("Saham Unusual Volume", f"{int(df_day['Unusual Volume'].sum()):,.0f}")
     col3.metric("Total Nilai Transaksi", f"Rp {df_day['Value'].sum():,.0f}")
 
     st.markdown("---")
@@ -158,17 +148,32 @@ with tab1:
     with col_g:
         st.markdown("**Top 10 Gainers (%)**")
         top_gainers = df_day.sort_values("Change %", ascending=False).head(10)
-        st.dataframe(top_gainers[['Stock Code', 'Close', 'Change %']], use_container_width=True, hide_index=True)
+        st.dataframe(
+            top_gainers[['Stock Code', 'Close', 'Change %']], 
+            use_container_width=True, 
+            hide_index=True,
+            format={"Close": "Rp {:,.0f}", "Change %": "{:.2f}%"} # Format angka
+        )
 
     with col_l:
         st.markdown("**Top 10 Losers (%)**")
         top_losers = df_day.sort_values("Change %", ascending=True).head(10)
-        st.dataframe(top_losers[['Stock Code', 'Close', 'Change %']], use_container_width=True, hide_index=True)
+        st.dataframe(
+            top_losers[['Stock Code', 'Close', 'Change %']], 
+            use_container_width=True, 
+            hide_index=True,
+            format={"Close": "Rp {:,.0f}", "Change %": "{:.2f}%"} # Format angka
+        )
         
     with col_v:
         st.markdown("**Top 10 by Value**")
         top_value = df_day.sort_values("Value", ascending=False).head(10)
-        st.dataframe(top_value[['Stock Code', 'Close', 'Value']], use_container_width=True, hide_index=True)
+        st.dataframe(
+            top_value[['Stock Code', 'Close', 'Value']], 
+            use_container_width=True, 
+            hide_index=True,
+            format={"Close": "Rp {:,.0f}", "Value": "Rp {:,.0f}"} # Format angka
+        )
 
     st.markdown("---")
     st.subheader("Distribusi Sektor & Signal")
@@ -179,7 +184,15 @@ with tab1:
         st.markdown("**Distribusi Final Signal (Semua Saham)**")
         if not df_day.empty:
             signal_counts = df_day["Final Signal"].value_counts().reset_index()
-            fig_sig = px.bar(signal_counts, x="Final Signal", y="count", title="Distribusi Final Signal")
+            fig_sig = px.bar(
+                signal_counts, 
+                x="Final Signal", 
+                y="count", 
+                title="Distribusi Final Signal",
+                text='count' # Tampilkan angka di bar
+            )
+            fig_sig.update_layout(yaxis_title="Jumlah Saham", yaxis_tickformat_=',.0f')
+            fig_sig.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
             st.plotly_chart(fig_sig, use_container_width=True)
         else:
             st.info("Tidak ada data signal untuk tanggal ini.")
@@ -189,7 +202,15 @@ with tab1:
         spike_df = df_day[df_day['Unusual Volume'] == True]
         if not spike_df.empty:
             sector_counts = spike_df["Sector"].value_counts().reset_index()
-            fig_sec = px.bar(sector_counts, x="Sector", y="count", title="Distribusi Sektor (Hanya Unusual Volume)")
+            fig_sec = px.bar(
+                sector_counts, 
+                x="Sector", 
+                y="count", 
+                title="Distribusi Sektor (Hanya Unusual Volume)",
+                text='count' # Tampilkan angka di bar
+            )
+            fig_sec.update_layout(yaxis_title="Jumlah Saham", yaxis_tickformat_=',.0f')
+            fig_sec.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
             st.plotly_chart(fig_sec, use_container_width=True)
         else:
             st.info("Tidak ada saham dengan 'Unusual Volume' pada tanggal ini.")
@@ -199,7 +220,6 @@ with tab1:
 with tab2:
     st.subheader("Analisis Time Series Saham Individual")
     
-    # Gunakan data 'df' (keseluruhan), bukan 'df_day'
     all_stocks = sorted(df["Stock Code"].dropna().unique())
     stock_to_analyze = st.selectbox(
         "Pilih Saham untuk dianalisis:",
@@ -208,7 +228,6 @@ with tab2:
     )
     
     if stock_to_analyze:
-        # Ambil data historis untuk saham terpilih
         df_stock = df[df['Stock Code'] == stock_to_analyze].sort_values('Last Trading Date')
         
         if df_stock.empty:
@@ -216,22 +235,74 @@ with tab2:
         else:
             st.info(f"Menampilkan data untuk: **{df_stock.iloc[0]['Company Name']} ({stock_to_analyze})**")
             
-            # Grafik 1: Pergerakan Harga (Close)
-            fig_price = px.line(
-                df_stock, 
-                x='Last Trading Date', 
-                y='Close', 
-                title=f"Pergerakan Harga (Close) - {stock_to_analyze}"
+            # --- START: Chart Dual-Axis (Harga vs NFF) ---
+            # 1. Buat figure dengan secondary y-axis
+            fig_dual = make_subplots(specs=[[{"secondary_y": True}]])
+
+            # 2. Tambahkan trace Harga (Line) ke y-axis primer (kiri)
+            fig_dual.add_trace(
+                go.Scatter(
+                    x=df_stock['Last Trading Date'],
+                    y=df_stock['Close'],
+                    name="Harga (Close)",
+                    mode='lines',
+                    line=dict(color='#1f77b4'), # Biru
+                    hovertemplate='<b>Harga</b>: Rp %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
+                ),
+                secondary_y=False,
             )
-            fig_price.update_layout(xaxis_title="Tanggal", yaxis_title="Harga Penutupan")
-            st.plotly_chart(fig_price, use_container_width=True)
+
+            # 3. Tambahkan trace Net Foreign Flow (Bar) ke y-axis sekunder (kanan)
+            # Beri warna bar: hijau jika positif (buy), merah jika negatif (sell)
+            colors_nff = ['#2ca02c' if v > 0 else '#d62728' for v in df_stock['Net Foreign Flow']]
+            fig_dual.add_trace(
+                go.Bar(
+                    x=df_stock['Last Trading Date'],
+                    y=df_stock['Net Foreign Flow'],
+                    name="Net Foreign Flow",
+                    marker_color=colors_nff,
+                    opacity=0.6,
+                    hovertemplate='<b>NFF</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
+                ),
+                secondary_y=True,
+            )
+
+            # 4. Atur layout dan judul axis
+            fig_dual.update_layout(
+                title_text=f"Pergerakan Harga vs. Net Foreign Flow - {stock_to_analyze}",
+                xaxis_title="Tanggal",
+                legend_title="Legenda",
+                hovermode="x unified" # Mode hover yang lebih baik
+            )
             
-            # Grafik 2: Volume Perdagangan vs MA20
+            # 5. Atur axis kiri (Harga)
+            fig_dual.update_yaxes(
+                title_text="Harga (Close) (Rp)",
+                secondary_y=False,
+                tickformat_=',.0f' # Format angka axis
+            )
+            
+            # 6. Atur axis kanan (NFF)
+            fig_dual.update_yaxes(
+                title_text="Net Foreign Flow",
+                secondary_y=True,
+                tickformat_=',.0f' # Format angka axis
+            )
+            
+            st.plotly_chart(fig_dual, use_container_width=True)
+            # --- END: Chart Dual-Axis ---
+
+            
+            # --- Chart Volume (tetap terpisah) ---
             fig_vol = px.bar(
                 df_stock, 
                 x='Last Trading Date', 
                 y='Volume', 
-                title=f"Volume Perdagangan vs. MA20 - {stock_to_analyze}"
+                title=f"Volume Perdagangan vs. MA20 - {stock_to_analyze}",
+                hover_data={
+                    'Last Trading Date': '|%d %b %Y',
+                    'Volume': ':,.0f'
+                }
             )
             # Tambahkan garis MA20
             fig_vol.add_scatter(
@@ -239,43 +310,43 @@ with tab2:
                 y=df_stock['MA20_vol'], 
                 mode='lines', 
                 name='MA20 Volume',
-                line=dict(color='orange', dash='dash')
+                line=dict(color='orange', dash='dash'),
+                hovertemplate='<b>MA20 Vol</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
             )
-            fig_vol.update_layout(xaxis_title="Tanggal", yaxis_title="Volume")
+            fig_vol.update_layout(
+                xaxis_title="Tanggal", 
+                yaxis_title="Volume",
+                yaxis_tickformat_=',.0f', # Format angka axis
+                hovermode="x unified"
+            )
             st.plotly_chart(fig_vol, use_container_width=True)
-            
-            # Grafik 3: Net Foreign Flow
-            fig_nff = px.bar(
-                df_stock, 
-                x='Last Trading Date', 
-                y='Net Foreign Flow', 
-                title=f"Aliran Dana Asing (Net) - {stock_to_analyze}",
-                color='Net Foreign Flow',
-                color_continuous_scale=px.colors.diverging.RdYlGn,
-                color_continuous_midpoint=0
-            )
-            fig_nff.update_layout(xaxis_title="Tanggal", yaxis_title="Net Foreign Flow")
-            st.plotly_chart(fig_nff, use_container_width=True)
 
 # --- TAB 3: DATA FILTER ---
 with tab3:
     st.subheader("Data Terfilter (Sesuai Pilihan Sidebar)")
     st.markdown(f"**Menampilkan {len(df_filtered)} baris data**")
     
-    # Kolom yang ingin ditampilkan di tabel
     columns_to_show = [
         "Stock Code", "Company Name", "Sector",
         "Close", "Change %", "Volume", "Volume Spike (x)",
         "Unusual Volume", "Net Foreign Flow", "Final Signal"
     ]
-    
-    # Pastikan hanya kolom yang ada di df_filtered yang dipilih
     available_columns = [col for col in columns_to_show if col in df_filtered.columns]
     
+    # Definisikan format untuk tabel
+    format_dict = {
+        "Close": "Rp {:,.0f}",
+        "Change %": "{:.2f}%",
+        "Volume": "{:,.0f}",
+        "Volume Spike (x)": "{:.2f}x",
+        "Net Foreign Flow": "{:,.0f}"
+    }
+
     st.dataframe(
         df_filtered[available_columns].sort_values("Volume Spike (x)", ascending=False),
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        format=format_dict # Terapkan format angka
     )
 
 st.markdown("---")
