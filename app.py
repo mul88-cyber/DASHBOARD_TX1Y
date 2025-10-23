@@ -25,6 +25,7 @@ URL = f"https.drive.google.com/uc?id={FILE_ID}"
 
 @st.cache_data(ttl=3600)
 def load_data():
+# ... (kode load_data tidak berubah) ...
     try:
         gdown.download(URL, "data.csv", quiet=True)
         df = pd.read_csv("data.csv")
@@ -55,6 +56,7 @@ def load_data():
 df = load_data()
 
 if df.empty:
+# ... (kode filter sidebar tidak berubah) ...
     st.warning("⚠️ Data belum berhasil dimuat. Aplikasi tidak dapat dilanjutkan.")
     st.stop()
 
@@ -133,6 +135,7 @@ tab1, tab2, tab3 = st.tabs([
 
 # --- TAB 1: DASHBOARD HARIAN ---
 with tab1:
+# ... (kode metrik tidak berubah) ...
     st.subheader("Ringkasan Pasar (pada tanggal terpilih)")
     
     col1, col2, col3 = st.columns(3)
@@ -152,7 +155,10 @@ with tab1:
             top_gainers[['Stock Code', 'Close', 'Change %']], 
             use_container_width=True, 
             hide_index=True,
-            format={"Close": "Rp {:,.0f}", "Change %": "{:.2f}%"} # Format angka
+            format={"Close": "Rp {:,.0f}"}, # <-- PERBAIKAN: Hapus 'Change %' dari sini
+            column_config={ # <-- PERBAIKAN: Tambahkan column_config
+                "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%")
+            }
         )
 
     with col_l:
@@ -162,17 +168,21 @@ with tab1:
             top_losers[['Stock Code', 'Close', 'Change %']], 
             use_container_width=True, 
             hide_index=True,
-            format={"Close": "Rp {:,.0f}", "Change %": "{:.2f}%"} # Format angka
+            format={"Close": "Rp {:,.0f}"}, # <-- PERBAIKAN: Hapus 'Change %' dari sini
+            column_config={ # <-- PERBAIKAN: Tambahkan column_config
+                "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%")
+            }
         )
         
     with col_v:
         st.markdown("**Top 10 by Value**")
+# ... (kode col_v dan chart tidak berubah) ...
         top_value = df_day.sort_values("Value", ascending=False).head(10)
         st.dataframe(
             top_value[['Stock Code', 'Close', 'Value']], 
             use_container_width=True, 
             hide_index=True,
-            format={"Close": "Rp {:,.0f}", "Value": "Rp {:,.0f}"} # Format angka
+            format={"Close": "Rp {:,.0f}", "Value": "Rp {:,.0f}"} # Format angka (Ini OK, tidak ada %)
         )
 
     st.markdown("---")
@@ -218,6 +228,7 @@ with tab1:
 
 # --- TAB 2: ANALISIS INDIVIDUAL ---
 with tab2:
+# ... (kode tab 2 tidak berubah) ...
     st.subheader("Analisis Time Series Saham Individual")
     
     all_stocks = sorted(df["Stock Code"].dropna().unique())
@@ -336,7 +347,7 @@ with tab3:
     # Definisikan format untuk tabel
     format_dict = {
         "Close": "Rp {:,.0f}",
-        "Change %": "{:.2f}%",
+        # "Change %": "{:.2f}%", # <-- PERBAIKAN: Hapus dari sini
         "Volume": "{:,.0f}",
         "Volume Spike (x)": "{:.2f}x",
         "Net Foreign Flow": "{:,.0f}"
@@ -346,7 +357,10 @@ with tab3:
         df_filtered[available_columns].sort_values("Volume Spike (x)", ascending=False),
         use_container_width=True,
         hide_index=True,
-        format=format_dict # Terapkan format angka
+        format=format_dict, # Terapkan format angka
+        column_config={ # <-- PERBAIKAN: Tambahkan column_config
+            "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%")
+        }
     )
 
 st.markdown("---")
