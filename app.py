@@ -9,12 +9,12 @@ from plotly.subplots import make_subplots # Diperlukan untuk dual-axis chart
 # ⚙️ KONFIGURASI DASHBOARD
 # =====================================================================
 st.set_page_config(
-    page_title="📊 Dashboard Analisis IDX",
+    page_title="📊 Dashboard Analisis Saham IDX",
     layout="wide",
     page_icon="📈"
 )
 
-st.title("📈 Dashboard Analisis IDX")
+st.title("📈 Dashboard Analisis Saham IDX")
 st.caption("Menganalisis data historis untuk menemukan saham potensial.")
 
 # =====================================================================
@@ -231,7 +231,8 @@ with tab1:
                 title="Distribusi Final Signal",
                 text='count' 
             )
-            fig_sig.update_layout(yaxis_title="Jumlah Saham", yaxis_tickformat_=',.0f')
+            # PERBAIKAN: Ganti update_layout dengan update_yaxes
+            fig_sig.update_yaxes(title_text="Jumlah Saham", tickformat_=',.0f')
             fig_sig.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
             st.plotly_chart(fig_sig, use_container_width=True)
         else:
@@ -249,7 +250,8 @@ with tab1:
                 title="Distribusi Sektor (Hanya Unusual Volume)",
                 text='count' 
             )
-            fig_sec.update_layout(yaxis_title="Jumlah Saham", yaxis_tickformat_=',.0f')
+            # PERBAIKAN: Ganti update_layout dengan update_yaxes
+            fig_sec.update_yaxes(title_text="Jumlah Saham", tickformat_=',.0f')
             fig_sec.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
             st.plotly_chart(fig_sec, use_container_width=True)
         else:
@@ -355,12 +357,14 @@ with tab2:
                 line=dict(color='orange', dash='dash'),
                 hovertemplate='<b>MA20 Vol</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
             )
+            # PERBAIKAN: Memindahkan format ke update_yaxes
             fig_vol.update_layout(
                 xaxis_title="Tanggal", 
                 yaxis_title="Volume",
-                yaxis_tickformat_=',.0f', 
+                # yaxis_tickformat_=',.0f', <-- Dihapus dari sini
                 hovermode="x unified"
             )
+            fig_vol.update_yaxes(tickformat_=',.0f') # <-- Dipindah ke sini
             st.plotly_chart(fig_vol, use_container_width=True)
 
 # --- TAB 3: DATA FILTER ---
