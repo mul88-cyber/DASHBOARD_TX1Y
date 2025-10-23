@@ -1,7 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-# import gdown (Sudah tidak diperlukan di versi ini)
+import plotly.graph_objects as go # Diperlukan untuk dual-axis chart
+from plotly.subplots import make_subplots # Diperlukan untuk dual-axis chart
+import gdown
 
 # =====================================================================
 # ⚙️ KONFIGURASI DASHBOARD
@@ -16,20 +18,25 @@ st.title("📈 Dashboard Analisis Saham IDX")
 st.caption("Menganalisis data historis untuk menemukan saham potensial.")
 
 # =====================================================================
-# 📦 MEMUAT DAN MEMBERSIHKAN DATA (dari File Lokal)
+# 📦 MEMUAT DAN MEMBERSIHKAN DATA (dari Google Drive)
 # =====================================================================
-LOCAL_FILE = "Kompilasi_Data_1Tahun.csv" # Membaca dari file lokal
+
+# ID File Google Drive Anda sudah dimasukkan di sini
+FILE_ID = "1A3eqXBUhzOTOQ1QR72ArEbLhGCTtYQ3L" 
+URL = f"https.drive.google.com/uc?id={FILE_ID}"
 
 @st.cache_data(ttl=3600)
 def load_data():
     try:
-        # Langsung baca file lokal
-        df = pd.read_csv(LOCAL_FILE) 
+        # Coba download file dari GDrive
+        gdown.download(URL, "data.csv", quiet=True, fuzzy=True) # fuzzy=True membantu handle link
+        df = pd.read_csv("data.csv")
+        
+        # Bersihkan nama kolom
         df.columns = df.columns.str.strip()
         df['Last Trading Date'] = pd.to_datetime(df['Last Trading Date'])
         
         # Konversi kolom-kolom penting ke numerik
-        # (Versi awal Anda memiliki spasi di ' Change % ' dan ' Volume Spike (x) ')
         cols_to_numeric = [
             'Change %', 'Typical Price', 'TPxV', 'VWMA_20D', 'MA20_vol', 
             'MA5_vol', 'Volume Spike (x)', 'Net Foreign Flow', 
@@ -55,11 +62,10 @@ def load_data():
         df = df.dropna(subset=['Last Trading Date', 'Stock Code'])
         return df
     
-    except FileNotFoundError:
-        st.error(f"❌ File '{LOCAL_FILE}' tidak ditemukan. Pastikan file ada di folder yang sama dengan app.py")
-        return pd.DataFrame()
     except Exception as e:
-        st.error(f"❌ Gagal membaca file lokal: {e}")
+        # Tampilkan error jika GDrive gagal (misal: 404 Not Found)
+        st.error(f"❌ Gagal membaca data dari Google Drive: {e}")
+        st.error(f"Pastikan FILE_ID ('{FILE_ID}') sudah benar dan file disetel ke 'Publik' (Siapa saja yang memiliki link).")
         return pd.DataFrame()
 
 df = load_data()
@@ -148,9 +154,9 @@ with tab1:
     st.subheader("Ringkasan Pasar (pada tanggal terpilih)")
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total Saham Aktif", len(df_day['Stock Code'].unique()))
-    col2.metric("Saham Unusual Volume", int(df_day['Unusual Volume'].sum()))
-    col3.metric("Total Nilai Transaksi (Value)", f"Rp {df_day['Value'].sum():,.0f}") # Format Koma ditambahkan
+    col1.metric("Total Saham Aktif", f"{len(df_day['Stock Code'].unique()):,.0f}")
+    col2.metric("Saham Unusual Volume", f"{int(df_day['Unusual Volume'].sum()):,.0f}")
+    col3.metric("Total Nilai Transaksi", f"Rp {df_day['Value'].sum():,.0f}")
 
     st.markdown("---")
     st.subheader("Top Movers & Most Active")
@@ -164,9 +170,9 @@ with tab1:
             top_gainers[['Stock Code', 'Close', 'Change %']], 
             use_container_width=True, 
             hide_index=True,
-            column_config={ # Perbaikan untuk format desimal
-                "Close": st.column_config.NumberColumn(format="Rp %d"),
-                "Change %": st.column_config.NumberColumn(format="%.2f%%")
+            format={"Close": "Rp {:,.0f}"}, # Hapus 'Change %' dari sini
+            column_config={ # Ini adalah perbaikan untuk error desimal
+                "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%")
             }
         )
 
@@ -177,9 +183,9 @@ with tab1:
             top_losers[['Stock Code', 'Close', 'Change %']], 
             use_container_width=True, 
             hide_index=True,
-            column_config={ # Perbaikan untuk format desimal
-                "Close": st.column_config.NumberColumn(format="Rp %d"),
-                "Change %": st.column_config.NumberColumn(format="%.2f%%")
+            format={"Close": "Rp {:,.0f}"}, # Hapus 'Change %' dari sini
+            column_config={ # Ini adalah perbaikan untuk error desimal
+                "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%")
             }
         )
         
@@ -190,10 +196,7 @@ with tab1:
             top_value[['Stock Code', 'Close', 'Value']], 
             use_container_width=True, 
             hide_index=True,
-             column_config={ # Perbaikan untuk format desimal
-                "Close": st.column_config.NumberColumn(format="Rp %d"),
-                "Value": st.column_config.NumberColumn(format="Rp %d")
-            }
+            format={"Close": "Rp {:,.0f}", "Value": "Rp {:,.0f}"}
         )
 
     st.markdown("---")
@@ -209,8 +212,11 @@ with tab1:
                 signal_counts, 
                 x="Final Signal", 
                 y="count", 
-                title="Distribusi Final Signal"
+                title="Distribusi Final Signal",
+                text='count' 
             )
+            fig_sig.update_layout(yaxis_title="Jumlah Saham", yaxis_tickformat_=',.0f')
+            fig_sig.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
             st.plotly_chart(fig_sig, use_container_width=True)
         else:
             st.info("Tidak ada data signal untuk tanggal ini.")
@@ -224,8 +230,11 @@ with tab1:
                 sector_counts, 
                 x="Sector", 
                 y="count", 
-                title="Distribusi Sektor (Hanya Unusual Volume)"
+                title="Distribusi Sektor (Hanya Unusual Volume)",
+                text='count' 
             )
+            fig_sec.update_layout(yaxis_title="Jumlah Saham", yaxis_tickformat_=',.0f')
+            fig_sec.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
             st.plotly_chart(fig_sec, use_container_width=True)
         else:
             st.info("Tidak ada saham dengan 'Unusual Volume' pada tanggal ini.")
@@ -250,41 +259,83 @@ with tab2:
         else:
             st.info(f"Menampilkan data untuk: **{df_stock.iloc[0]['Company Name']} ({stock_to_analyze})**")
             
-            # Chart Harga (Close)
-            fig_price = px.line(
-                df_stock, 
-                x='Last Trading Date', 
-                y='Close', 
-                title=f"Pergerakan Harga - {stock_to_analyze}"
-            )
-            st.plotly_chart(fig_price, use_container_width=True)
+            # --- START: Chart Dual-Axis (Harga vs NFF) ---
+            fig_dual = make_subplots(specs=[[{"secondary_y": True}]])
 
-            # Chart Volume vs MA20
+            fig_dual.add_trace(
+                go.Scatter(
+                    x=df_stock['Last Trading Date'],
+                    y=df_stock['Close'],
+                    name="Harga (Close)",
+                    mode='lines',
+                    line=dict(color='#1f77b4'), 
+                    hovertemplate='<b>Harga</b>: Rp %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
+                ),
+                secondary_y=False,
+            )
+
+            colors_nff = ['#2ca02c' if v > 0 else '#d62728' for v in df_stock['Net Foreign Flow']]
+            fig_dual.add_trace(
+                go.Bar(
+                    x=df_stock['Last Trading Date'],
+                    y=df_stock['Net Foreign Flow'],
+                    name="Net Foreign Flow",
+                    marker_color=colors_nff,
+                    opacity=0.6,
+                    hovertemplate='<b>NFF</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
+                ),
+                secondary_y=True,
+            )
+
+            fig_dual.update_layout(
+                title_text=f"Pergerakan Harga vs. Net Foreign Flow - {stock_to_analyze}",
+                xaxis_title="Tanggal",
+                legend_title="Legenda",
+                hovermode="x unified" 
+            )
+            
+            fig_dual.update_yaxes(
+                title_text="Harga (Close) (Rp)",
+                secondary_y=False,
+                tickformat_=',.0f' 
+            )
+            
+            fig_dual.update_yaxes(
+                title_text="Net Foreign Flow",
+                secondary_y=True,
+                tickformat_=',.0f' 
+            )
+            
+            st.plotly_chart(fig_dual, use_container_width=True)
+            # --- END: Chart Dual-Axis ---
+
+            
+            # --- Chart Volume (tetap terpisah) ---
             fig_vol = px.bar(
                 df_stock, 
                 x='Last Trading Date', 
                 y='Volume', 
-                title=f"Volume Perdagangan vs. MA20 - {stock_to_analyze}"
+                title=f"Volume Perdagangan vs. MA20 - {stock_to_analyze}",
+                hover_data={
+                    'Last Trading Date': '|%d %b %Y',
+                    'Volume': ':,.0f'
+                }
             )
             fig_vol.add_scatter(
                 x=df_stock['Last Trading Date'], 
                 y=df_stock['MA20_vol'], 
                 mode='lines', 
                 name='MA20 Volume',
-                line=dict(color='orange', dash='dash')
+                line=dict(color='orange', dash='dash'),
+                hovertemplate='<b>MA20 Vol</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
+            )
+            fig_vol.update_layout(
+                xaxis_title="Tanggal", 
+                yaxis_title="Volume",
+                yaxis_tickformat_=',.0f', 
+                hovermode="x unified"
             )
             st.plotly_chart(fig_vol, use_container_width=True)
-            
-            # Chart Net Foreign Flow
-            fig_nff = px.bar(
-                df_stock, 
-                x='Last Trading Date', 
-                y='Net Foreign Flow', 
-                title=f"Aliran Dana Asing (Net) - {stock_to_analyze}",
-                color='Net Foreign Flow',
-                color_continuous_scale=['red', 'green']
-            )
-            st.plotly_chart(fig_nff, use_container_width=True)
 
 # --- TAB 3: DATA FILTER ---
 with tab3:
@@ -298,19 +349,23 @@ with tab3:
     ]
     available_columns = [col for col in columns_to_show if col in df_filtered.columns]
     
+    format_dict = {
+        "Close": "Rp {:,.0f}",
+        "Volume": "{:,.0f}",
+        "Volume Spike (x)": "{:.2f}x",
+        "Net Foreign Flow": "{:,.0f}"
+    }
+
     st.dataframe(
         df_filtered[available_columns].sort_values("Volume Spike (x)", ascending=False),
         use_container_width=True,
         hide_index=True,
-        column_config={ # Perbaikan untuk format desimal
-            "Close": st.column_config.NumberColumn(format="Rp %d"),
-            "Change %": st.column_config.NumberColumn(format="%.2f%%"),
-            "Volume": st.column_config.NumberColumn(format="%d"),
-            "Volume Spike (x)": st.column_config.NumberColumn(format="%.2fx"),
-            "Net Foreign Flow": st.column_config.NumberColumn(format="%d"),
+        format=format_dict, 
+        column_config={ # Ini adalah perbaikan untuk error desimal
+            "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%")
         }
     )
 
 st.markdown("---")
-st.info("Data diambil dari file CSV lokal. Muat ulang halaman jika file diperbarui.")
+st.info("Data diambil dari Google Drive dan di-cache selama 1 jam. Refresh halaman untuk data terbaru.")
 
