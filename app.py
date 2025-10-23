@@ -79,7 +79,7 @@ if df.empty:
 # =====================================================================
 # 🧭 FILTER DATA (SIDEBAR)
 # =====================================================================
-st.sidebar.header("ud83d\udf9b️ Filter Analisis Harian")
+st.sidebar.header("🎛️ Filter Analisis Harian") # <-- PERBAIKAN DI SINI
 
 max_date = df['Last Trading Date'].max().date()
 selected_date = st.sidebar.date_input(
