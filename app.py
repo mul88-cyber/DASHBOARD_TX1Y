@@ -281,12 +281,26 @@ with tab2:
         else:
             st.info(f"Menampilkan data untuk: **{df_stock.iloc[0]['Company Name']} ({stock_to_analyze})**")
             
-            # --- START: Chart Dual-Axis (Harga vs NFF) ---
-            fig_dual = make_subplots(specs=[[{"secondary_y": True}]])
+            # --- START: Chart GABUNGAN (Harga, NFF, Volume) ---
+            
+            # 1. Buat Subplots (2 baris, 1 kolom, X-axis terhubung)
+            # Baris 1: Punya Y-axis sekunder (untuk Harga)
+            # Baris 2: Polos (untuk Volume)
+            fig_combined = make_subplots(
+                rows=2, 
+                cols=1, 
+                shared_xaxes=True, 
+                row_heights=[0.7, 0.3], # 70% untuk harga, 30% untuk volume
+                vertical_spacing=0.03, # Jarak antar chart
+                specs=[[{"secondary_y": True}], # Spek baris 1 (dual Y-axis)
+                       [{}]]                    # Spek baris 2 (standar)
+            )
 
-            # Trace 1 (KIRI) = Net Foreign Flow (NFF)
+            # --- Baris 1: Harga vs NFF ---
+            
+            # Trace 1 (Baris 1, KIRI) = Net Foreign Flow (NFF)
             colors_nff = ['#2ca02c' if v > 0 else '#d62728' for v in df_stock['Net Foreign Flow']]
-            fig_dual.add_trace(
+            fig_combined.add_trace(
                 go.Bar(
                     x=df_stock['Last Trading Date'],
                     y=df_stock['Net Foreign Flow'],
@@ -295,11 +309,11 @@ with tab2:
                     opacity=0.6,
                     hovertemplate='<b>NFF</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
                 ),
-                secondary_y=False, # <-- KIRI
+                row=1, col=1, secondary_y=False # <-- Baris 1, KIRI
             )
             
-            # Trace 2 (KANAN) = Harga (Close)
-            fig_dual.add_trace(
+            # Trace 2 (Baris 1, KANAN) = Harga (Close)
+            fig_combined.add_trace(
                 go.Scatter(
                     x=df_stock['Last Trading Date'],
                     y=df_stock['Close'],
@@ -308,51 +322,58 @@ with tab2:
                     line=dict(color='#1f77b4'), 
                     hovertemplate='<b>Harga</b>: Rp %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
                 ),
-                secondary_y=True, # <-- KANAN
+                row=1, col=1, secondary_y=True # <-- Baris 1, KANAN
+            )
+            
+            # --- Baris 2: Volume vs MA20_vol ---
+            
+            # Trace 3 (Baris 2, KIRI) = Volume
+            fig_combined.add_trace(
+                go.Bar(
+                    x=df_stock['Last Trading Date'],
+                    y=df_stock['Volume'],
+                    name="Volume",
+                    marker_color='#8c564b', # Warna coklat
+                    opacity=0.6,
+                    hovertemplate='<b>Volume</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
+                ),
+                row=2, col=1 # <-- Baris 2
             )
 
-            # PERBAIKAN: Menghapus semua konfigurasi yaxis= dan yaxis2=
-            # untuk membiarkan Plotly menggunakan default
-            # Ini adalah upaya terakhir untuk memperbaiki bug label hilang
-            fig_dual.update_layout(
-                title_text=f"Pergerakan Harga vs. Net Foreign Flow - {stock_to_analyze}",
-                xaxis_title="Tanggal",
-                legend_title="Legenda",
-                hovermode="x unified"
+            # Trace 4 (Baris 2, KIRI) = MA20 Volume
+            fig_combined.add_trace(
+                go.Scatter(
+                    x=df_stock['Last Trading Date'], 
+                    y=df_stock['MA20_vol'], 
+                    mode='lines', 
+                    name='MA20 Volume',
+                    line=dict(color='orange', dash='dash'),
+                    hovertemplate='<b>MA20 Vol</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
+                ),
+                row=2, col=1 # <-- Baris 2
             )
-            
-            st.plotly_chart(fig_dual, use_container_width=True)
-            # --- END: Chart Dual-Axis ---
 
+            # --- Konfigurasi Layout Gabungan ---
             
-            # --- Chart Volume (tetap terpisah) ---
-            fig_vol = px.bar(
-                df_stock, 
-                x='Last Trading Date', 
-                y='Volume', 
-                title=f"Volume Perdagangan vs. MA20 - {stock_to_analyze}",
-                hover_data={
-                    'Last Trading Date': '|%d %b %Y',
-                    'Volume': ':,.0f'
-                }
-            )
-            # Tambah garis MA20 Volume
-            fig_vol.add_scatter(
-                x=df_stock['Last Trading Date'], 
-                y=df_stock['MA20_vol'], 
-                mode='lines', 
-                name='MA20 Volume',
-                line=dict(color='orange', dash='dash'),
-                hovertemplate='<b>MA20 Vol</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
+            # Sembunyikan label X-axis di chart atas (karena di-share)
+            fig_combined.update_xaxes(showticklabels=False, row=1, col=1)
+            
+            # Atur judul-judul Sumbu Y
+            fig_combined.update_yaxes(title_text="Net Foreign Flow (Shares)", row=1, col=1, secondary_y=False) # PERBAIKAN: dari (Rp) ke (Shares)
+            fig_combined.update_yaxes(title_text="Harga (Rp)", row=1, col=1, secondary_y=True)
+            fig_combined.update_yaxes(title_text="Volume (Shares)", row=2, col=1)
+            
+            # Atur layout utama
+            fig_combined.update_layout(
+                height=600, # Bikin lebih tinggi
+                title_text=f"Analisis Lengkap - {stock_to_analyze}",
+                hovermode="x unified", # Tooltip terhubung
+                legend_traceorder="normal",
+                xaxis2_title="Tanggal" # Judul X-axis di chart bawah
             )
             
-            # PERBAIKAN: Menghapus semua konfigurasi yaxis=
-            # untuk membiarkan Plotly menggunakan default
-            fig_vol.update_layout(
-                xaxis_title="Tanggal", 
-                hovermode="x unified"
-            )
-            st.plotly_chart(fig_vol, use_container_width=True)
+            st.plotly_chart(fig_combined, use_container_width=True)
+            # --- END: Chart GABUNGAN ---
 
 # --- TAB 3: DATA FILTER ---
 with tab3:
