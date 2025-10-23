@@ -233,8 +233,8 @@ with tab1:
                 title="Distribusi Final Signal",
                 text='count' 
             )
-            # PERBAIKAN: Ganti update_yaxes dengan update_layout
-            fig_sig.update_layout(yaxis=dict(title_text="Jumlah Saham", tickformat_=',.0f'))
+            # PERBAIKAN: Hapus tickformat untuk menghindari ValueError
+            fig_sig.update_layout(yaxis_title="Jumlah Saham")
             fig_sig.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
             st.plotly_chart(fig_sig, use_container_width=True)
         else:
@@ -252,8 +252,8 @@ with tab1:
                 title="Distribusi Sektor (Hanya Unusual Volume)",
                 text='count' 
             )
-            # PERBAIKAN: Ganti update_yaxes dengan update_layout
-            fig_sec.update_layout(yaxis=dict(title_text="Jumlah Saham", tickformat_=',.0f'))
+            # PERBAIKAN: Hapus tickformat untuk menghindari ValueError
+            fig_sec.update_layout(yaxis_title="Jumlah Saham")
             fig_sec.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
             st.plotly_chart(fig_sec, use_container_width=True)
         else:
@@ -286,20 +286,7 @@ with tab2:
             # --- START: Chart Dual-Axis (Harga vs NFF) ---
             fig_dual = make_subplots(specs=[[{"secondary_y": True}]])
 
-            # Trace 1: Harga (Close)
-            fig_dual.add_trace(
-                go.Scatter(
-                    x=df_stock['Last Trading Date'],
-                    y=df_stock['Close'],
-                    name="Harga (Close)",
-                    mode='lines',
-                    line=dict(color='#1f77b4'), 
-                    hovertemplate='<b>Harga</b>: Rp %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
-                ),
-                secondary_y=False,
-            )
-
-            # Trace 2: Net Foreign Flow (NFF)
+            # PERMINTAAN: Trace 1 (KIRI) = Net Foreign Flow (NFF)
             colors_nff = ['#2ca02c' if v > 0 else '#d62728' for v in df_stock['Net Foreign Flow']]
             fig_dual.add_trace(
                 go.Bar(
@@ -310,7 +297,20 @@ with tab2:
                     opacity=0.6,
                     hovertemplate='<b>NFF</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
                 ),
-                secondary_y=True,
+                secondary_y=False, # <-- DIPINDAH KE KIRI
+            )
+            
+            # PERMINTAAN: Trace 2 (KANAN) = Harga (Close)
+            fig_dual.add_trace(
+                go.Scatter(
+                    x=df_stock['Last Trading Date'],
+                    y=df_stock['Close'],
+                    name="Harga (Close)",
+                    mode='lines',
+                    line=dict(color='#1f77b4'), 
+                    hovertemplate='<b>Harga</b>: Rp %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
+                ),
+                secondary_y=True, # <-- DIPINDAH KE KANAN
             )
 
             # Update Layout
@@ -321,16 +321,16 @@ with tab2:
                 hovermode="x unified" 
             )
             
-            # Update Y-Axis Kiri (Harga)
+            # PERMINTAAN: Update Y-Axis Kiri (NFF)
             fig_dual.update_yaxes(
-                title_text="Harga (Close) (Rp)",
+                title_text="Net Foreign Flow",
                 secondary_y=False,
                 tickformat_=',.0f' 
             )
             
-            # Update Y-Axis Kanan (NFF)
+            # PERMINTAAN: Update Y-Axis Kanan (Harga)
             fig_dual.update_yaxes(
-                title_text="Net Foreign Flow",
+                title_text="Harga (Close) (Rp)",
                 secondary_y=True,
                 tickformat_=',.0f' 
             )
@@ -359,15 +359,13 @@ with tab2:
                 line=dict(color='orange', dash='dash'),
                 hovertemplate='<b>MA20 Vol</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
             )
-            # PERBAIKAN: Memindahkan format ke update_yaxes
+            # PERBAIKAN: Hapus format tickformat dari yaxis=dict()
             fig_vol.update_layout(
                 xaxis_title="Tanggal", 
                 yaxis_title="Volume",
-                # yaxis_tickformat_=',.0f', <-- Dihapus dari sini
                 hovermode="x unified",
-                yaxis=dict(tickformat_=',.0f') # <-- Dipindah ke sini
+                yaxis=dict(title_text="Volume") # Dihapus tickformat
             )
-            # fig_vol.update_yaxes(tickformat_=',.0f') # <-- Dihapus
             st.plotly_chart(fig_vol, use_container_width=True)
 
 # --- TAB 3: DATA FILTER ---
