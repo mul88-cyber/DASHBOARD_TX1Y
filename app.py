@@ -183,9 +183,8 @@ with tab1:
             top_gainers[['Stock Code', 'Close', 'Change %']], 
             use_container_width=True, 
             hide_index=True,
-            column_config={ # Perbaikan error TypeError
+            column_config={ 
                 "Close": st.column_config.NumberColumn("Close", format="Rp %,.0f"),
-                # PERMINTAAN: Ubah format, hapus '%%'
                 "Change %": st.column_config.NumberColumn("Change %", format="%.2f") 
             }
         )
@@ -197,9 +196,8 @@ with tab1:
             top_losers[['Stock Code', 'Close', 'Change %']], 
             use_container_width=True, 
             hide_index=True,
-            column_config={ # Perbaikan error TypeError
+            column_config={ 
                 "Close": st.column_config.NumberColumn("Close", format="Rp %,.0f"),
-                # PERMINTAAN: Ubah format, hapus '%%'
                 "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
             }
         )
@@ -211,7 +209,7 @@ with tab1:
             top_value[['Stock Code', 'Close', 'Value']], 
             use_container_width=True, 
             hide_index=True,
-            column_config={ # Perbaikan error TypeError
+            column_config={ 
                 "Close": st.column_config.NumberColumn("Close", format="Rp %,.0f"),
                 "Value": st.column_config.NumberColumn("Value", format="Rp %,.0f")
             }
@@ -286,7 +284,7 @@ with tab2:
             # --- START: Chart Dual-Axis (Harga vs NFF) ---
             fig_dual = make_subplots(specs=[[{"secondary_y": True}]])
 
-            # PERMINTAAN: Trace 1 (KIRI) = Net Foreign Flow (NFF)
+            # Trace 1 (KIRI) = Net Foreign Flow (NFF)
             colors_nff = ['#2ca02c' if v > 0 else '#d62728' for v in df_stock['Net Foreign Flow']]
             fig_dual.add_trace(
                 go.Bar(
@@ -297,10 +295,10 @@ with tab2:
                     opacity=0.6,
                     hovertemplate='<b>NFF</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
                 ),
-                secondary_y=False, # <-- DIPINDAH KE KIRI
+                secondary_y=False, # <-- KIRI
             )
             
-            # PERMINTAAN: Trace 2 (KANAN) = Harga (Close)
+            # Trace 2 (KANAN) = Harga (Close)
             fig_dual.add_trace(
                 go.Scatter(
                     x=df_stock['Last Trading Date'],
@@ -310,29 +308,25 @@ with tab2:
                     line=dict(color='#1f77b4'), 
                     hovertemplate='<b>Harga</b>: Rp %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
                 ),
-                secondary_y=True, # <-- DIPINDAH KE KANAN
+                secondary_y=True, # <-- KANAN
             )
 
-            # Update Layout
+            # PERBAIKAN: Mengatur Sumbu Y langsung di update_layout
             fig_dual.update_layout(
                 title_text=f"Pergerakan Harga vs. Net Foreign Flow - {stock_to_analyze}",
                 xaxis_title="Tanggal",
                 legend_title="Legenda",
-                hovermode="x unified" 
-            )
-            
-            # PERMINTAAN: Update Y-Axis Kiri (NFF)
-            fig_dual.update_yaxes(
-                title_text="Net Foreign Flow",
-                secondary_y=False
-                # tickformat_=',.0f' # <-- DIHAPUS UNTUK FIX VALUEERROR
-            )
-            
-            # PERMINTAAN: Update Y-Axis Kanan (Harga)
-            fig_dual.update_yaxes(
-                title_text="Harga (Close) (Rp)",
-                secondary_y=True
-                # tickformat_=',.0f' # <-- DIHAPUS UNTUK FIX VALUEERROR
+                hovermode="x unified",
+                # Sumbu Y Kiri (NFF)
+                yaxis=dict(
+                    title_text="Net Foreign Flow",
+                    showticklabels=True # <-- PAKSA MUNCUL
+                ),
+                # Sumbu Y Kanan (Harga)
+                yaxis2=dict(
+                    title_text="Harga (Close) (Rp)",
+                    showticklabels=True # <-- PAKSA MUNCUL
+                )
             )
             
             st.plotly_chart(fig_dual, use_container_width=True)
@@ -359,12 +353,15 @@ with tab2:
                 line=dict(color='orange', dash='dash'),
                 hovertemplate='<b>MA20 Vol</b>: %{y:,.0f}<br><b>Tanggal</b>: %{x|%d %b %Y}<extra></extra>'
             )
-            # PERBAIKAN: Hapus format tickformat dari yaxis=dict()
+            
+            # PERBAIKAN: Mengatur Sumbu Y langsung di update_layout
             fig_vol.update_layout(
                 xaxis_title="Tanggal", 
-                yaxis_title="Volume",
                 hovermode="x unified",
-                yaxis=dict(title_text="Volume") # Dihapus tickformat
+                yaxis=dict(
+                    title_text="Volume",
+                    showticklabels=True # <-- PAKSA MUNCUL
+                )
             )
             st.plotly_chart(fig_vol, use_container_width=True)
 
@@ -385,12 +382,11 @@ with tab3:
         df_filtered[available_columns].sort_values("Volume Spike (x)", ascending=False),
         use_container_width=True,
         hide_index=True,
-        column_config={ # Perbaikan error TypeError
+        column_config={ 
             "Close": st.column_config.NumberColumn("Close", format="Rp %,.0f"),
             "Volume": st.column_config.NumberColumn("Volume", format="%,.0f"),
             "Volume Spike (x)": st.column_config.NumberColumn("Volume Spike (x)", format="%.2fx"),
             "Net Foreign Flow": st.column_config.NumberColumn("Net Foreign Flow", format="%,.0f"),
-            # PERMINTAAN: Ubah format, hapus '%%'
             "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
         }
     )
