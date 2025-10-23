@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go # Diperlukan untuk dual-axis chart
 from plotly.subplots import make_subplots # Diperlukan untuk dual-axis chart
-import gdown
+# import gdown  <-- Sudah tidak diperlukan
 
 # =====================================================================
 # ⚙️ KONFIGURASI DASHBOARD
@@ -21,16 +21,16 @@ st.caption("Menganalisis data historis untuk menemukan saham potensial.")
 # 📦 MEMUAT DAN MEMBERSIHKAN DATA (dari Google Drive)
 # =====================================================================
 
-# ID File Google Drive Anda sudah dimasukkan di sini
+# ID File Google Drive Anda
 FILE_ID = "1A3eqXBUhzOTOQ1QR72ArEbLhGCTtYQ3L" 
-URL = f"https.drive.google.com/uc?id={FILE_ID}"
+# Buat URL download langsung yang bisa dibaca pandas
+DOWNLOAD_URL = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
 
 @st.cache_data(ttl=3600)
 def load_data():
     try:
-        # Coba download file dari GDrive
-        gdown.download(URL, "data.csv", quiet=True, fuzzy=True) # fuzzy=True membantu handle link
-        df = pd.read_csv("data.csv")
+        # TIDAK PERLU gdown. Langsung baca URL ke pandas
+        df = pd.read_csv(DOWNLOAD_URL)
         
         # Bersihkan nama kolom
         df.columns = df.columns.str.strip()
@@ -66,18 +66,20 @@ def load_data():
         # Tampilkan error jika GDrive gagal (misal: 404 Not Found)
         st.error(f"❌ Gagal membaca data dari Google Drive: {e}")
         st.error(f"Pastikan FILE_ID ('{FILE_ID}') sudah benar dan file disetel ke 'Publik' (Siapa saja yang memiliki link).")
+        st.error(f"URL yang dicoba: {DOWNLOAD_URL}") # Info debug tambahan
         return pd.DataFrame()
 
 df = load_data()
 
 if df.empty:
+# ... (kode filter sidebar tidak berubah) ...
     st.warning("⚠️ Data belum berhasil dimuat. Aplikasi tidak dapat dilanjutkan.")
     st.stop()
 
 # =====================================================================
 # 🧭 FILTER DATA (SIDEBAR)
 # =====================================================================
-st.sidebar.header("🎛️ Filter Analisis Harian")
+st.sidebar.header("ud83d\udf9b️ Filter Analisis Harian")
 
 max_date = df['Last Trading Date'].max().date()
 selected_date = st.sidebar.date_input(
@@ -132,11 +134,13 @@ if selected_signals:
     df_filtered = df_filtered[df_filtered["Final Signal"].isin(selected_signals)]
 
 if not df_filtered.empty:
-    df_filtered = df_filtered[df_filtered["Volume Spike (x)"] >= min_spike]
+    if "Volume Spike (x)" in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered["Volume Spike (x)"] >= min_spike]
 
 if show_only_spike:
     if not df_filtered.empty:
-        df_filtered = df_filtered[df_filtered["Unusual Volume"] == True]
+        if "Unusual Volume" in df_filtered.columns:
+            df_filtered = df_filtered[df_filtered["Unusual Volume"] == True]
 
 # =====================================================================
 #  LAYOUT UTAMA (DENGAN TABS)
@@ -151,6 +155,7 @@ tab1, tab2, tab3 = st.tabs([
 
 # --- TAB 1: DASHBOARD HARIAN ---
 with tab1:
+# ... (kode tab 1 tidak berubah) ...
     st.subheader("Ringkasan Pasar (pada tanggal terpilih)")
     
     col1, col2, col3 = st.columns(3)
@@ -242,6 +247,7 @@ with tab1:
 
 # --- TAB 2: ANALISIS INDIVIDUAL ---
 with tab2:
+# ... (kode tab 2 tidak berubah) ...
     st.subheader("Analisis Time Series Saham Individual")
     
     all_stocks = sorted(df["Stock Code"].dropna().unique())
@@ -339,6 +345,7 @@ with tab2:
 
 # --- TAB 3: DATA FILTER ---
 with tab3:
+# ... (kode tab 3 tidak berubah) ...
     st.subheader("Data Terfilter (Sesuai Pilihan Sidebar)")
     st.markdown(f"**Menampilkan {len(df_filtered)} baris data**")
     
