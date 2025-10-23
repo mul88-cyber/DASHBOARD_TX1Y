@@ -185,7 +185,8 @@ with tab1:
             hide_index=True,
             column_config={ # Perbaikan error TypeError
                 "Close": st.column_config.NumberColumn("Close", format="Rp %,.0f"),
-                "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%")
+                # PERMINTAAN: Ubah format, hapus '%%'
+                "Change %": st.column_config.NumberColumn("Change %", format="%.2f") 
             }
         )
 
@@ -198,7 +199,8 @@ with tab1:
             hide_index=True,
             column_config={ # Perbaikan error TypeError
                 "Close": st.column_config.NumberColumn("Close", format="Rp %,.0f"),
-                "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%")
+                # PERMINTAAN: Ubah format, hapus '%%'
+                "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
             }
         )
         
@@ -231,8 +233,8 @@ with tab1:
                 title="Distribusi Final Signal",
                 text='count' 
             )
-            # PERBAIKAN: Ganti update_layout dengan update_yaxes
-            fig_sig.update_yaxes(title_text="Jumlah Saham", tickformat_=',.0f')
+            # PERBAIKAN: Ganti update_yaxes dengan update_layout
+            fig_sig.update_layout(yaxis=dict(title_text="Jumlah Saham", tickformat_=',.0f'))
             fig_sig.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
             st.plotly_chart(fig_sig, use_container_width=True)
         else:
@@ -250,8 +252,8 @@ with tab1:
                 title="Distribusi Sektor (Hanya Unusual Volume)",
                 text='count' 
             )
-            # PERBAIKAN: Ganti update_layout dengan update_yaxes
-            fig_sec.update_yaxes(title_text="Jumlah Saham", tickformat_=',.0f')
+            # PERBAIKAN: Ganti update_yaxes dengan update_layout
+            fig_sec.update_layout(yaxis=dict(title_text="Jumlah Saham", tickformat_=',.0f'))
             fig_sec.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
             st.plotly_chart(fig_sec, use_container_width=True)
         else:
@@ -362,9 +364,10 @@ with tab2:
                 xaxis_title="Tanggal", 
                 yaxis_title="Volume",
                 # yaxis_tickformat_=',.0f', <-- Dihapus dari sini
-                hovermode="x unified"
+                hovermode="x unified",
+                yaxis=dict(tickformat_=',.0f') # <-- Dipindah ke sini
             )
-            fig_vol.update_yaxes(tickformat_=',.0f') # <-- Dipindah ke sini
+            # fig_vol.update_yaxes(tickformat_=',.0f') # <-- Dihapus
             st.plotly_chart(fig_vol, use_container_width=True)
 
 # --- TAB 3: DATA FILTER ---
@@ -389,7 +392,8 @@ with tab3:
             "Volume": st.column_config.NumberColumn("Volume", format="%,.0f"),
             "Volume Spike (x)": st.column_config.NumberColumn("Volume Spike (x)", format="%.2fx"),
             "Net Foreign Flow": st.column_config.NumberColumn("Net Foreign Flow", format="%,.0f"),
-            "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%")
+            # PERMINTAAN: Ubah format, hapus '%%'
+            "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
         }
     )
 
