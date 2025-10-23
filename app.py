@@ -324,15 +324,15 @@ with tab2:
             # PERMINTAAN: Update Y-Axis Kiri (NFF)
             fig_dual.update_yaxes(
                 title_text="Net Foreign Flow",
-                secondary_y=False,
-                tickformat_=',.0f' 
+                secondary_y=False
+                # tickformat_=',.0f' # <-- DIHAPUS UNTUK FIX VALUEERROR
             )
             
             # PERMINTAAN: Update Y-Axis Kanan (Harga)
             fig_dual.update_yaxes(
                 title_text="Harga (Close) (Rp)",
-                secondary_y=True,
-                tickformat_=',.0f' 
+                secondary_y=True
+                # tickformat_=',.0f' # <-- DIHAPUS UNTUK FIX VALUEERROR
             )
             
             st.plotly_chart(fig_dual, use_container_width=True)
