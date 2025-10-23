@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np # Ditambahkan untuk kalkulasi skor
 import plotly.express as px
 import plotly.graph_objects as go # Diperlukan untuk dual-axis chart
 from plotly.subplots import make_subplots # Diperlukan untuk dual-axis chart
@@ -16,6 +17,132 @@ st.set_page_config(
 
 st.title("📈 Dashboard Analisis Saham IDX")
 st.caption("Menganalisis data historis untuk menemukan saham potensial.")
+
+# =====================================================================
+# 🧠 LOGIKA SCORING (dari Skrip Colab)
+# =====================================================================
+# Bobot skor (bisa diutak-atik)
+W = dict(
+    trend_akum=0.40, trend_ff=0.30, trend_mfv=0.20, trend_mom=0.10,
+    mom_price=0.40,  mom_vol=0.25,  mom_akum=0.25,  mom_ff=0.10,
+    blend_trend=0.35, blend_mom=0.35, blend_nbsa=0.20, blend_fcontrib=0.05, blend_unusual=0.05
+)
+
+def pct_rank(s: pd.Series):
+    """Menghitung percentile rank, di-normalisasi 0-100."""
+    s = pd.to_numeric(s, errors="coerce")
+    return s.rank(pct=True, method="average").fillna(0)*100
+
+def to_pct(s: pd.Series):
+    """Konversi seri ke persentase 0-100 (min-max scaling)."""
+    s = pd.to_numeric(s, errors="coerce").replace([np.inf,-np.inf], np.nan)
+    if s.notna().sum() <= 1: return pd.Series(50, index=s.index)
+    mn, mx = s.min(), s.max()
+    if pd.isna(mn) or pd.isna(mx) or mn==mx: return pd.Series(50, index=s.index)
+    return (s-mn)/(mx-mn)*100
+
+def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp, W: dict):
+    """
+    Menjalankan logika scoring dari skrip Colab untuk menemukan
+    TOP 20 saham potensial berdasarkan data lengkap.
+    """
+    try:
+        # === Window tanggal ===
+        trend_start = latest_date - pd.Timedelta(days=30)
+        mom_start   = latest_date - pd.Timedelta(days=7)
+        analysis_date_str = latest_date.strftime('%Y-%m-%d')
+
+        trend_df = df[df['Last Trading Date'] >= trend_start].copy()
+        mom_df   = df[df['Last Trading Date'] >= mom_start].copy()
+        last_df  = df[df['Last Trading Date'] == latest_date].copy()
+
+        if trend_df.empty or mom_df.empty or last_df.empty:
+            st.error(f"Data tidak cukup untuk analisis TOP 20 pada tanggal {analysis_date_str}.")
+            return pd.DataFrame()
+
+        # === TR E N D (30 hari) ===
+        tr = trend_df.groupby('Stock Code').agg(
+            last_price=('Close','last'),
+            last_final_signal=('Final Signal','last'),
+            total_net_ff=('Net Foreign Flow','sum'),
+            total_money_flow=('Money Flow Value','sum'),
+            avg_change_pct=('Change %','mean'),
+            sector=('Sector','last')
+        ).reset_index()
+
+        score_akum = tr['last_final_signal'].map({'Strong Akumulasi':100,'Akumulasi':75,'Netral':30,'Distribusi':10,'Strong Distribusi':0}).fillna(30)
+        score_ff   = pct_rank(tr['total_net_ff'])
+        score_mfv  = pct_rank(tr['total_money_flow'])
+        score_mom  = pct_rank(tr['avg_change_pct'])
+        tr['Trend Score'] = (score_akum*W['trend_akum'] + score_ff*W['trend_ff'] +
+                             score_mfv*W['trend_mfv'] + score_mom*W['trend_mom'])
+
+        # === M O M E N T U M (7 hari) ===
+        mo = mom_df.groupby('Stock Code').agg(
+            total_change_pct=('Change %','sum'),
+            had_unusual_volume=('Unusual Volume','any'),
+            last_final_signal=('Final Signal','last'),
+            total_net_ff=('Net Foreign Flow','sum')
+        ).reset_index()
+
+        s_price = pct_rank(mo['total_change_pct'])
+        s_vol   = mo['had_unusual_volume'].map({True:100, False:20}).fillna(20)
+        s_akum  = mo['last_final_signal'].map({'Strong Akumulasi':100,'Akumulasi':80,'Netral':40,'Distribusi':10,'Strong Distribusi':0}).fillna(40)
+        s_ff7   = pct_rank(mo['total_net_ff'])
+        mo['Momentum Score'] = (s_price*W['mom_price'] + s_vol*W['mom_vol'] +
+                                s_akum*W['mom_akum'] + s_ff7*W['mom_ff'])
+
+        # === NBSA & Foreign Contribution (30 hari) ===
+        nbsa = trend_df.groupby('Stock Code').agg(total_net_ff_30d=('Net Foreign Flow','sum')).reset_index()
+        
+        tmp = trend_df.copy()
+        tmp['Foreign Value'] = tmp['Foreign Buy'].fillna(0) + tmp['Foreign Sell'].fillna(0)
+        contrib = tmp.groupby('Stock Code').agg(
+            total_foreign_value_30d=('Foreign Value','sum'),
+            total_value_30d=('Value','sum')
+        ).reset_index()
+        contrib['foreign_contrib_pct'] = (contrib['total_foreign_value_30d'] / (contrib['total_value_30d'] + 1))*100
+
+        # === Unusual bonus (hari terakhir) ===
+        uv = last_df.set_index('Stock Code')['Unusual Volume'].map({True:1, False:0})
+
+        # === GABUNG skor → Potential Score ===
+        rank = tr[['Stock Code','Trend Score','last_price','last_final_signal','sector']].merge(
+            mo[['Stock Code','Momentum Score']], on='Stock Code', how='outer'
+        ).merge(
+            nbsa, on='Stock Code', how='left'
+        ).merge(
+            contrib[['Stock Code','foreign_contrib_pct']], on='Stock Code', how='left'
+        )
+
+        rank['NBSA Score']            = to_pct(rank['total_net_ff_30d'])
+        rank['Foreign Contrib Score'] = to_pct(rank['foreign_contrib_pct'])
+        unusual_bonus = uv.reindex(rank['Stock Code']).fillna(0)*5 # skala 0/5
+
+        rank['Potential Score'] = (
+            rank['Trend Score'].fillna(0)*W['blend_trend'] +
+            rank['Momentum Score'].fillna(0)*W['blend_mom'] +
+            rank['NBSA Score'].fillna(50)*W['blend_nbsa'] +
+            rank['Foreign Contrib Score'].fillna(50)*W['blend_fcontrib'] +
+            unusual_bonus.values*W['blend_unusual']
+        )
+
+        # === TOP 20 & format ===
+        top20 = rank.sort_values('Potential Score', ascending=False).head(20).copy()
+        top20.insert(0, 'Analysis Date', analysis_date_str)
+        
+        # Susun kolom untuk Sheet
+        cols = ['Analysis Date','Stock Code','Potential Score','Trend Score','Momentum Score',
+                'total_net_ff_30d','foreign_contrib_pct','last_price','last_final_signal','sector']
+        for c in cols:
+            if c not in top20.columns: top20[c] = np.nan
+        top20 = top20[cols]
+        
+        return top20
+
+    except Exception as e:
+        st.error(f"Gagal menghitung skor TOP 20: {e}")
+        return pd.DataFrame()
 
 # =====================================================================
 # 📦 MEMUAT DAN MEMBERSIHKAN DATA (dari Google Drive)
@@ -40,10 +167,25 @@ def load_data():
         df.columns = df.columns.str.strip()
         
         # 2. Ganti nama kolom yang salah (jika ada)
-        if ' Change % ' in df.columns:
-             df = df.rename(columns={' Change % ': 'Change %'})
-        if ' Volume Spike (x) ' in df.columns:
-             df = df.rename(columns={' Volume Spike (x) ': 'Volume Spike (x)'})
+        # Tambahkan pembersihan untuk kolom 'Foreign Buy' dan 'Foreign Sell'
+        cols_to_clean_rename = {
+            ' Change % ': 'Change %',
+            ' Volume Spike (x) ': 'Volume Spike (x)',
+            'Foreign Buy': 'Foreign Buy',
+            'Foreign Sell': 'Foreign Sell'
+        }
+        
+        # Buat set kolom yang ada
+        existing_cols = set(df.columns)
+        
+        # Rename kolom yang ada
+        rename_map = {}
+        for old_name, new_name in cols_to_clean_rename.items():
+            if old_name in existing_cols:
+                rename_map[old_name] = new_name
+        
+        if rename_map:
+             df = df.rename(columns=rename_map)
 
         # 3. Konversi Tanggal
         df['Last Trading Date'] = pd.to_datetime(df['Last Trading Date'])
@@ -52,7 +194,8 @@ def load_data():
         cols_to_numeric = [
             'Change %', 'Typical Price', 'TPxV', 'VWMA_20D', 'MA20_vol', 
             'MA5_vol', 'Volume Spike (x)', 'Net Foreign Flow', 
-            'Bid/Offer Imbalance', 'Money Flow Value', 'Close', 'Volume', 'Value'
+            'Bid/Offer Imbalance', 'Money Flow Value', 'Close', 'Volume', 'Value',
+            'Foreign Buy', 'Foreign Sell' # Pastikan ini numerik
         ]
         for col in cols_to_numeric:
             if col in df.columns:
@@ -66,6 +209,11 @@ def load_data():
         
         # 6. Hapus baris yang tidak memiliki data penting
         df = df.dropna(subset=['Last Trading Date', 'Stock Code'])
+        
+        # 7. Pastikan kolom Sektor ada (penting untuk skor)
+        if 'Sector' not in df.columns:
+            df['Sector'] = 'Others' # Default jika tidak ada
+            
         return df
     
     except Exception as e:
@@ -88,17 +236,20 @@ if df.empty:
 st.sidebar.header("🎛️ Filter Analisis Harian") # Perbaikan error Unicode
 
 # --- Filter Tanggal ---
-max_date = df['Last Trading Date'].max().date()
+max_date = df['Last Trading Date'].max() # Ambil sebagai Timestamp, bukan date
 selected_date = st.sidebar.date_input(
     "Pilih Tanggal Analisis",
-    max_date,
+    max_date.date(), # Tampilkan sebagai date
     min_value=df['Last Trading Date'].min().date(),
-    max_value=max_date,
+    max_value=max_date.date(),
     format="DD-MM-YYYY"
 )
 
+# Konversi selected_date (date) ke Timestamp untuk perbandingan
+selected_timestamp = pd.to_datetime(selected_date)
+
 # Filter dataframe utama berdasarkan tanggal terpilih
-df_day = df[df['Last Trading Date'].dt.date == selected_date].copy()
+df_day = df[df['Last Trading Date'] == selected_timestamp].copy()
 
 # --- Filter Lanjutan ---
 st.sidebar.header("Filter Data Lanjutan")
@@ -120,11 +271,15 @@ selected_signals = st.sidebar.multiselect(
     placeholder="Pilih signal"
 )
 
+min_spike_value = 1.0
+if not df_day.empty and "Volume Spike (x)" in df_day.columns and df_day["Volume Spike (x)"].max() > 0:
+    min_spike_value = float(df_day["Volume Spike (x)"].max())
+
 min_spike = st.sidebar.slider(
     "Minimal Volume Spike (x)",
     min_value=1.0,
-    max_value=float(df_day["Volume Spike (x)"].max() if not df_day.empty and df_day["Volume Spike (x)"].max() > 0 else 50.0),
-    value=2.0,
+    max_value=max(min_spike_value, 50.0), # Pastikan max_value >= min_value
+    value=min(2.0, min_spike_value), # Pastikan value <= max_value
     step=0.5
 )
 
@@ -154,12 +309,13 @@ if show_only_spike:
 # =====================================================================
 #  LAYOUT UTAMA (DENGAN TABS)
 # =====================================================================
-st.caption(f"Menampilkan data untuk tanggal: **{selected_date.strftime('%d %B %Y')}**")
+st.caption(f"Menampilkan data untuk tanggal: **{selected_timestamp.strftime('%d %B %Y')}**")
 
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "📊 **Dashboard Harian**",
     "📈 **Analisis Individual**",
-    "📋 **Data Filter**"
+    "📋 **Data Filter**",
+    "🏆 **Saham Potensial (TOP 20)**" # <-- TAB BARU
 ])
 
 # --- TAB 1: DASHBOARD HARIAN ---
@@ -284,8 +440,6 @@ with tab2:
             # --- START: Chart GABUNGAN (Harga, NFF, Volume) ---
             
             # 1. Buat Subplots (2 baris, 1 kolom, X-axis terhubung)
-            # Baris 1: Punya Y-axis sekunder (untuk Harga)
-            # Baris 2: Polos (untuk Volume)
             fig_combined = make_subplots(
                 rows=2, 
                 cols=1, 
@@ -359,9 +513,9 @@ with tab2:
             fig_combined.update_xaxes(showticklabels=False, row=1, col=1)
             
             # Atur judul-judul Sumbu Y
-            fig_combined.update_yaxes(title_text="Net Foreign Flow (Shares)", row=1, col=1, secondary_y=False) # PERBAIKAN: dari (Rp) ke (Shares)
-            fig_combined.update_yaxes(title_text="Harga (Rp)", row=1, col=1, secondary_y=True)
-            fig_combined.update_yaxes(title_text="Volume (Shares)", row=2, col=1)
+            fig_combined.update_yaxes(title_text="Net Foreign Flow (Shares)", row=1, col=1, secondary_y=False, showticklabels=True) # Paksa Tampil
+            fig_combined.update_yaxes(title_text="Harga (Rp)", row=1, col=1, secondary_y=True, showticklabels=True) # Paksa Tampil
+            fig_combined.update_yaxes(title_text="Volume (Shares)", row=2, col=1, showticklabels=True) # Paksa Tampil
             
             # Atur layout utama
             fig_combined.update_layout(
@@ -388,18 +542,49 @@ with tab3:
     # Pastikan kolom ada sebelum menampilkannya
     available_columns = [col for col in columns_to_show if col in df_filtered.columns]
     
-    st.dataframe(
-        df_filtered[available_columns].sort_values("Volume Spike (x)", ascending=False),
-        use_container_width=True,
-        hide_index=True,
-        column_config={ 
-            "Close": st.column_config.NumberColumn("Close", format="Rp %,.0f"),
-            "Volume": st.column_config.NumberColumn("Volume", format="%,.0f"),
-            "Volume Spike (x)": st.column_config.NumberColumn("Volume Spike (x)", format="%.2fx"),
-            "Net Foreign Flow": st.column_config.NumberColumn("Net Foreign Flow", format="%,.0f"),
-            "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
-        }
-    )
+    if not df_filtered.empty:
+        st.dataframe(
+            df_filtered[available_columns].sort_values("Volume Spike (x)", ascending=False),
+            use_container_width=True,
+            hide_index=True,
+            column_config={ 
+                "Close": st.column_config.NumberColumn("Close", format="Rp %,.0f"),
+                "Volume": st.column_config.NumberColumn("Volume", format="%,.0f"),
+                "Volume Spike (x)": st.column_config.NumberColumn("Volume Spike (x)", format="%.2fx"),
+                "Net Foreign Flow": st.column_config.NumberColumn("Net Foreign Flow", format="%,.0f"),
+                "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
+            }
+        )
+    else:
+        st.info("Tidak ada data yang sesuai dengan filter Anda.")
+
+# --- TAB 4: SAHAM POTENSIAL (TOP 20) ---
+with tab4:
+    st.subheader(f"🏆 TOP 20 Saham Potensial (Analisis per {max_date.strftime('%d %B %Y')})")
+    st.caption("Dihitung menggunakan data 30 hari (Trend) dan 7 hari (Momentum) terakhir.")
+
+    # Hitung skor. Gunakan max_date (Timestamp)
+    top20_df = calculate_potential_score(df, max_date, W)
+
+    if not top20_df.empty:
+        st.dataframe(
+            top20_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Potential Score": st.column_config.NumberColumn("Skor", format="%.2f", help="Skor gabungan (Trend, Momentum, NBSA, dll)"),
+                "Trend Score": st.column_config.NumberColumn("Skor Trend (30d)", format="%.2f"),
+                "Momentum Score": st.column_config.NumberColumn("Skor Momentum (7d)", format="%.2f"),
+                "total_net_ff_30d": st.column_config.NumberColumn("Net FF (30d)", format="%,.0f"),
+                "foreign_contrib_pct": st.column_config.NumberColumn("Kontribusi Asing (%)", format="%.2f%%"),
+                "last_price": st.column_config.NumberColumn("Harga Close", format="Rp %,.0f"),
+                "last_final_signal": st.column_config.TextColumn("Signal Terakhir"),
+                "sector": st.column_config.TextColumn("Sektor"),
+            }
+        )
+    else:
+        st.warning("Gagal menghitung skor TOP 20. Cek kembali data sumber.")
+
 
 st.markdown("---")
 st.info("Data diambil dari Google Drive dan di-cache selama 1 jam. Refresh halaman jika data di GDrive baru diperbarui.")
