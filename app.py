@@ -67,7 +67,8 @@ def load_data():
 
     try:
         # 1. Cari file ID terbaru di dalam folder
-        st.info(f"Mencari file '{FILE_NAME}' di folder GDrive...")
+        # PERUBAHAN: Pesan 'mengganggu' diubah menjadi st.toast()
+        st.toast(f"Mencari file '{FILE_NAME}' di folder GDrive...")
         query = f"'{FOLDER_ID}' in parents and name='{FILE_NAME}' and trashed=false"
         results = service.files().list(
             q=query,
@@ -85,7 +86,8 @@ def load_data():
 
         # 2. Dapatkan File ID dinamis
         file_id = items[0]['id']
-        st.success(f"File ditemukan (ID: {file_id}). Men-download data...")
+        # PERUBAHAN: Pesan 'mengganggu' diubah menjadi st.toast()
+        st.toast(f"File ditemukan (ID: {file_id}). Men-download data...")
 
         # 3. Download file content
         request = service.files().get_media(fileId=file_id)
@@ -94,7 +96,6 @@ def load_data():
         done = False
         while done is False:
             status, done = downloader.next_chunk()
-            # st.progress(int(status.progress() * 100)) # Opsi progress bar
 
         fh.seek(0) # Kembali ke awal file di memori
 
@@ -103,7 +104,6 @@ def load_data():
         
         # 5. Lakukan pembersihan data
         df.columns = df.columns.str.strip()
-        # Perbaikan error ParserError (tanggal 00-00-00)
         df['Last Trading Date'] = pd.to_datetime(df['Last Trading Date'], errors='coerce') 
         
         cols_to_numeric = [
@@ -116,18 +116,17 @@ def load_data():
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        # Bersihkan 'Unusual Volume' (penting untuk kalkulasi skor)
         if 'Unusual Volume' in df.columns:
             if df['Unusual Volume'].dtype == 'object':
                 df['Unusual Volume'] = df['Unusual Volume'].str.strip().str.lower().isin(['spike volume signifikan', 'true', 'True', 'TRUE'])
             df['Unusual Volume'] = df['Unusual Volume'].astype(bool)
         
-        # Bersihkan 'Final Signal' (penting untuk kalkulasi skor)
         if 'Final Signal' in df.columns:
             df['Final Signal'] = df['Final Signal'].str.strip()
             
         df = df.dropna(subset=['Last Trading Date', 'Stock Code'])
-        st.success("Data berhasil dimuat dan dibersihkan.")
+        # PERUBAHAN: Pesan 'mengganggu' diubah menjadi st.toast()
+        st.toast("Data berhasil dimuat dan dibersihkan.", icon="✅")
         return df
     
     except Exception as e:
@@ -156,7 +155,7 @@ def to_pct(s: pd.Series):
 def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
     """Menjalankan logika scoring dari skrip Colab pada data yang ada."""
     
-    st.info("Menghitung skor potensial untuk Top 20...")
+    st.toast("Menghitung skor potensial untuk Top 20...", icon="⏳")
     
     # === Window tanggal
     trend_start = latest_date - pd.Timedelta(days=30)
@@ -231,8 +230,7 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
 
     rank['NBSA Score'] = to_pct(rank['total_net_ff_30d'])
     rank['Foreign Contrib Score'] = to_pct(rank['foreign_contrib_pct'])
-    unusual_bonus = uv.reindex(rank['Stock Code']).fillna(0) * 5  # skala 0/5
-
+    unusual_bonus = uv.reindex(rank['Stock Code']).fillna(0) * 5
     rank['Potential Score'] = (
         rank['Trend Score'].fillna(0) * W['blend_trend'] +
         rank['Momentum Score'].fillna(0) * W['blend_mom'] +
@@ -245,12 +243,10 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
     top20 = rank.sort_values('Potential Score', ascending=False).head(20).copy()
     top20.insert(0, 'Analysis Date', latest_date.strftime('%Y-%m-%d'))
     
-    # pembulatan skor
     score_cols = ['Potential Score', 'Trend Score', 'Momentum Score', 'NBSA Score', 'Foreign Contrib Score']
     for c in score_cols:
         if c in top20.columns: top20[c] = pd.to_numeric(top20[c], errors='coerce').round(2)
 
-    # Susun kolom untuk Sheet
     cols_order = ['Analysis Date', 'Stock Code', 'Potential Score', 'Trend Score', 'Momentum Score',
                   'total_net_ff_30d', 'foreign_contrib_pct', 'last_price', 'last_final_signal', 'sector']
     
@@ -258,7 +254,7 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
         if c not in top20.columns: top20[c] = np.nan
         
     top20 = top20[cols_order]
-    st.success("Skor potensial berhasil dihitung.")
+    st.toast("Skor potensial berhasil dihitung.", icon="🏆")
     return top20
 
 # ==============================================================================
@@ -276,8 +272,8 @@ df = load_data()
 st.sidebar.header("🎛️ Filter Analisis Harian")
 
 if st.sidebar.button("🔄 Refresh Data (Tarik Ulang dari GDrive)"):
-    st.cache_data.clear() # Hapus cache
-    st.rerun() # Jalankan ulang skrip
+    st.cache_data.clear()
+    st.rerun()
 
 if df.empty:
     st.warning("⚠️ Data belum berhasil dimuat. Silakan cek 'secrets.toml' dan izin GDrive Anda, lalu klik 'Refresh Data'.")
@@ -293,7 +289,6 @@ selected_date = st.sidebar.date_input(
     format="DD-MM-YYYY"
 )
 
-# Filter data berdasarkan tanggal terpilih (untuk Tab 1 & 3)
 df_day = df[df['Last Trading Date'].dt.date == selected_date].copy()
 
 # --- Filter Lanjutan (untuk Tab 3) ---
@@ -326,7 +321,7 @@ min_spike = st.sidebar.slider(
 
 show_only_spike = st.sidebar.checkbox(
     "Hanya tampilkan Unusual Volume (True)",
-    value=False # Defaultnya tampilkan semua
+    value=False
 )
 
 # --- Terapkan Filter (untuk Tab 3) ---
@@ -430,7 +425,6 @@ with tab1:
                     title="Distribusi Final Signal",
                     text='count'
                 )
-                # Perbaikan bug label Y-axis
                 fig_sig.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
                 fig_sig.update_layout(yaxis_title="Jumlah Saham", yaxis=dict(showticklabels=True))
                 st.plotly_chart(fig_sig, use_container_width=True)
@@ -447,7 +441,6 @@ with tab1:
                     title="Distribusi Sektor (Hanya Unusual Volume)",
                     text='count'
                 )
-                # Perbaikan bug label Y-axis
                 fig_sec.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
                 fig_sec.update_layout(yaxis_title="Jumlah Saham", yaxis=dict(showticklabels=True))
                 st.plotly_chart(fig_sec, use_container_width=True)
@@ -471,8 +464,6 @@ with tab2:
         if df_stock.empty:
             st.warning(f"Tidak ditemukan data historis untuk {stock_to_analyze}")
         else:
-            # PERBAIKAN: Hapus 'Company Name' karena tidak ada di file CSV
-            # company_name = df_stock.iloc[0].get('Company Name', stock_to_analyze) 
             st.info(f"Menampilkan data untuk: **{stock_to_analyze}**")
             
             # --- Buat Subplot Gabungan ---
@@ -481,20 +472,23 @@ with tab2:
                 cols=1, 
                 shared_xaxes=True, 
                 vertical_spacing=0.05,
-                row_heights=[0.7, 0.3], # Plot atas 70%, bawah 30%
-                specs=[[{"secondary_y": True}], # Baris 1 punya Y-axis kedua
-                       [{"secondary_y": False}]] # Baris 2 tidak
+                row_heights=[0.7, 0.3],
+                specs=[[{"secondary_y": True}],
+                       [{"secondary_y": False}]]
             )
 
             # --- Plot 1: Harga (Y-Kanan) vs NFF (Y-Kiri) ---
             
+            # PERUBAHAN: Tentukan warna NFF (Merah/Hijau)
+            nff_colors = np.where(df_stock['Net Foreign Flow'] >= 0, 'green', 'red')
+
             # Tambah NFF (Batang) ke Y-axis KIRI (default)
             fig_combined.add_trace(go.Bar(
                 x=df_stock['Last Trading Date'],
                 y=df_stock['Net Foreign Flow'],
                 name='Net Foreign Flow (Shares)',
-                marker_color='orange'
-            ), row=1, col=1, secondary_y=False) # secondary_y=False (Kiri)
+                marker_color=nff_colors # PERUBAHAN: Terapkan warna
+            ), row=1, col=1, secondary_y=False)
 
             # Tambah Harga (Garis) ke Y-axis KANAN
             fig_combined.add_trace(go.Scatter(
@@ -502,7 +496,7 @@ with tab2:
                 y=df_stock['Close'],
                 name='Harga Penutupan (Rp)',
                 line=dict(color='blue')
-            ), row=1, col=1, secondary_y=True) # secondary_y=True (Kanan)
+            ), row=1, col=1, secondary_y=True)
 
             # --- Plot 2: Volume (Y-Kiri) ---
             
@@ -526,13 +520,12 @@ with tab2:
             fig_combined.update_layout(
                 title_text=f"Analisis Harga, Foreign Flow, dan Volume: {stock_to_analyze}",
                 height=600,
-                xaxis_rangeslider_visible=False, # Sembunyikan rangeslider di plot atas
-                xaxis2_rangeslider_visible=True, # Tampilkan rangeslider di plot bawah
-                hovermode="x unified", # Tooltip terpadu
+                xaxis_rangeslider_visible=False,
+                xaxis2_rangeslider_visible=True,
+                hovermode="x unified",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             
-            # Perbaikan bug label Y-axis (biarkan Plotly pakai default)
             fig_combined.update_yaxes(title_text="Net Foreign Flow (Shares)", row=1, col=1, secondary_y=False, showticklabels=True)
             fig_combined.update_yaxes(title_text="Harga Penutupan (Rp)", row=1, col=1, secondary_y=True, showticklabels=True)
             fig_combined.update_yaxes(title_text="Volume (Shares)", row=2, col=1, secondary_y=False, showticklabels=True)
@@ -585,4 +578,3 @@ with tab4:
         )
     else:
         st.warning("Gagal menghitung skor. Periksa apakah data cukup.")
-
