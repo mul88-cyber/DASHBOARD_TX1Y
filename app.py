@@ -19,13 +19,13 @@ from googleapiclient.http import MediaIoBaseDownload
 # ⚙️ 2) KONFIGURASI DASHBOARD & DATA
 # ==============================================================================
 st.set_page_config(
-    page_title="📊 Dashboard Analisis Saham IDX",
+    page_title="📊 Dashboard Analisis Code IDX",
     layout="wide",
     page_icon="📈"
 )
 
-st.title("📈 Dashboard Analisis Saham IDX")
-st.caption("Menganalisis data historis untuk menemukan saham potensial (Data dari Google Drive).")
+st.title("📈 Dashboard Analisis Code IDX")
+st.caption("Menganalisis data historis untuk menemukan Code potensial (Data dari Google Drive).")
 
 # ID Folder Google Drive (Statis, tidak berubah)
 FOLDER_ID = "1hX2jwUrAgi4Fr8xkcFWjCW6vbk6lsIlP"
@@ -303,9 +303,9 @@ df_day = df[df['Last Trading Date'].dt.date == selected_date].copy()
 
 st.sidebar.header("Filter Data Lanjutan")
 selected_stocks = st.sidebar.multiselect(
-    "Pilih Saham (Stock Code)",
+    "Pilih Code (Stock Code)",
     options=sorted(df_day["Stock Code"].dropna().unique()),
-    placeholder="Ketik kode saham"
+    placeholder="Ketik kode Code"
 )
 
 selected_sectors = st.sidebar.multiseiytdf.columnslect(
@@ -356,7 +356,7 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "📊 **Dashboard Harian**",
     "📈 **Analisis Individual**",
     "📋 **Data Filter**",
-    "🏆 **Saham Potensial (TOP 20)**" # Tab Baru
+    "🏆 **Code Potensial (TOP 20)**" # Tab Baru
 ])
 
 # --- TAB 1: DASHBOARD HARIAN ---
@@ -364,8 +364,8 @@ with tab1:
     st.subheader("Ringkasan Pasar (pada tanggal terpilih)")
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total Saham Aktif", f"{len(df_day['Stock Code'].unique()):,.0f}")
-    col2.metric("Saham Unusual Volume", f"{int(df_day['Unusual Volume'].sum()):,.0f}")
+    col1.metric("Total Code Aktif", f"{len(df_day['Stock Code'].unique()):,.0f}")
+    col2.metric("Code Unusual Volume", f"{int(df_day['Unusual Volume'].sum()):,.0f}")
     col3.metric("Total Nilai Transaksi", f"Rp {df_day['Value'].sum():,.0f}")
 
     st.markdown("---")
@@ -418,7 +418,7 @@ with tab1:
     col_sig, col_sec = st.columns(2)
     
     with col_sig:
-        st.markdown("**Distribusi Final Signal (Semua Saham)**")
+        st.markdown("**Distribusi Final Signal (Semua Code)**")
         if not df_day.empty:
             signal_counts = df_day["Final Signal"].value_counts().reset_index()
             fig_sig = px.bar(
@@ -430,7 +430,7 @@ with tab1:
             )
             fig_sig.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
             # Perbaikan Bug: Biarkan Plotly mengatur label sumbu Y secara default
-            fig_sig.update_layout(yaxis_title="Jumlah Saham")
+            fig_sig.update_layout(yaxis_title="Jumlah Code")
             st.plotly_chart(fig_sig, use_container_width=True)
         else:
             st.info("Tidak ada data signal untuk tanggal ini.")
@@ -449,19 +449,19 @@ with tab1:
             )
             fig_sec.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
             # Perbaikan Bug: Biarkan Plotly mengatur label sumbu Y secara default
-            fig_sec.update_layout(yaxis_title="Jumlah Saham")
+            fig_sec.update_layout(yaxis_title="Jumlah Code")
             st.plotly_chart(fig_sec, use_container_width=True)
         else:
-            st.info("Tidak ada saham dengan 'Unusual Volume' pada tanggal ini.")
+            st.info("Tidak ada Code dengan 'Unusual Volume' pada tanggal ini.")
 
 
 # --- TAB 2: ANALISIS INDIVIDUAL ---
 with tab2:
-    st.subheader("Analisis Time Series Saham Individual")
+    st.subheader("Analisis Time Series Code Individual")
     
     all_stocks = sorted(df["Stock Code"].dropna().unique())
     stock_to_analyze = st.selectbox(
-        "Pilih Saham untuk dianalisis:",
+        "Pilih Code untuk dianalisis:",
         all_stocks,
         index=all_stocks.index("AADI") if "AADI" in all_stocks else 0
     )
@@ -542,7 +542,7 @@ with tab2:
 
 # --- TAB 3: DATA FILTER ---
 with tab3:
-    st.subheader(f"Data Filter: {len(df_filtered)} saham ditemukan")
+    st.subheader(f"Data Filter: {len(df_filtered)} Code ditemukan")
     st.dataframe(
         df_filtered,
         use_container_width=True,
@@ -557,9 +557,9 @@ with tab3:
         }
     )
 
-# --- TAB 4: SAHAM POTENSIAL (TOP 20) ---
+# --- TAB 4: Code POTENSIAL (TOP 20) ---
 with tab4:
-    st.subheader("🏆 Top 20 Saham Potensial (Analisis 30 Hari Terakhir)")
+    st.subheader("🏆 Top 20 Code Potensial (Analisis 30 Hari Terakhir)")
     st.caption(f"Skor dihitung berdasarkan data historis 30 hari terakhir dari tanggal data terbaru ({max_date.strftime('%d %B %Y')}).")
     st.info("Kalkulasi skor ini (Trend, Momentum, NBSA) didasarkan pada logika skrip Colab Anda.")
     
