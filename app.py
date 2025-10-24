@@ -118,7 +118,7 @@ def load_data():
             
         df = df.dropna(subset=['Last Trading Date', 'Stock Code'])
         
-        # PERUBAHAN: Buat kolom NFF (Rp) menggunakan Typical Price
+        # Buat kolom NFF (Rp) menggunakan Typical Price
         # Ini adalah proxy yang lebih baik daripada Close Price
         if 'Typical Price' in df.columns and 'Net Foreign Flow' in df.columns:
             df['NFF (Rp)'] = df['Net Foreign Flow'] * df['Typical Price']
@@ -170,14 +170,14 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
     tr = trend_df.groupby('Stock Code').agg(
         last_price=('Close', 'last'),
         last_final_signal=('Final Signal', 'last'),
-        total_net_ff_rp=('NFF (Rp)', 'sum'), # PERUBAHAN: Gunakan NFF (Rp)
+        total_net_ff_rp=('NFF (Rp)', 'sum'), # Tetap pakai (Rp) untuk skor
         total_money_flow=('Money Flow Value', 'sum'),
         avg_change_pct=('Change %', 'mean'),
         sector=('Sector', 'last')
     ).reset_index()
 
     score_akum = tr['last_final_signal'].map({'Strong Akumulasi': 100, 'Akumulasi': 75, 'Netral': 30, 'Distribusi': 10, 'Strong Distribusi': 0}).fillna(30)
-    score_ff = pct_rank(tr['total_net_ff_rp']) # PERUBAHAN: Gunakan NFF (Rp)
+    score_ff = pct_rank(tr['total_net_ff_rp']) # Tetap pakai (Rp) untuk skor
     score_mfv = pct_rank(tr['total_money_flow'])
     score_mom = pct_rank(tr['avg_change_pct'])
     tr['Trend Score'] = (score_akum * W['trend_akum'] + score_ff * W['trend_ff'] +
@@ -188,40 +188,29 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
         total_change_pct=('Change %', 'sum'),
         had_unusual_volume=('Unusual Volume', 'any'),
         last_final_signal=('Final Signal', 'last'),
-        total_net_ff_rp=('NFF (Rp)', 'sum') # PERUBAHAN: Gunakan NFF (Rp)
+        total_net_ff_rp=('NFF (Rp)', 'sum') # Tetap pakai (Rp) untuk skor
     ).reset_index()
 
     s_price = pct_rank(mo['total_change_pct'])
     s_vol = mo['had_unusual_volume'].map({True: 100, False: 20}).fillna(20)
     s_akum = mo['last_final_signal'].map({'Strong Akumulasi': 100, 'Akumulasi': 80, 'Netral': 40, 'Distribusi': 10, 'Strong Distribusi': 0}).fillna(40)
-    s_ff7 = pct_rank(mo['total_net_ff_rp']) # PERUBAHAN: Gunakan NFF (Rp)
+    s_ff7 = pct_rank(mo['total_net_ff_rp']) # Tetap pakai (Rp) untuk skor
     mo['Momentum Score'] = (s_price * W['mom_price'] + s_vol * W['mom_vol'] +
                             s_akum * W['mom_akum'] + s_ff7 * W['mom_ff'])
 
     # === NBSA & Foreign Contribution (30 hari)
-    nbsa = trend_df.groupby('Stock Code').agg(total_net_ff_30d_rp=('NFF (Rp)', 'sum')).reset_index() # PERUBAHAN: Gunakan NFF (Rp)
+    nbsa = trend_df.groupby('Stock Code').agg(total_net_ff_30d_rp=('NFF (Rp)', 'sum')).reset_index() # Tetap pakai (Rp) untuk skor
     
     if {'Foreign Buy', 'Foreign Sell', 'Value'}.issubset(df.columns):
         tmp = trend_df.copy()
-        # Asumsi Foreign Value bisa di-proxy dari NFF (Rp) / (Buy-Sell)
-        # Atau lebih baik, hitung dari Foreign Buy/Sell (shares) * Typical Price
-        # Namun, untuk foreign_contrib_pct, kita gunakan Value yang ada
         tmp['Foreign Value'] = tmp['Foreign Buy'].fillna(0) + tmp['Foreign Sell'].fillna(0)
-        # Cek jika 'Value' ada, jika tidak, kontribusi tidak bisa dihitung
         if 'Value' in tmp.columns:
             contrib = tmp.groupby('Stock Code').agg(
-                # Ini masih berbasis shares, bukan value. Kita butuh Foreign Value (Rp)
-                # Untuk saat ini, kita gunakan 'Value' dari foreign buy/sell shares * typical price
-                # Tapi data Foreign Buy/Sell (Rp) tidak ada.
-                # Mari kita asumsikan Foreign Value (shares) * Typical Price
-                total_foreign_value_30d_shares=('Foreign Value','sum'), # Ini masih shares
+                total_foreign_value_30d_shares=('Foreign Value','sum'),
                 total_value_30d=('Value', 'sum')
             ).reset_index()
-            # Ini tidak akurat. Mari kita gunakan data yang ada
-            # 'foreign_contrib_pct' di skrip colab juga tidak akurat.
-            # Mari kita gunakan NBSA (Rp) sebagai gantinya
             rank_contrib = nbsa.copy()
-            rank_contrib['foreign_contrib_pct'] = np.nan # Hapus kalkulasi FContrib yg tidak akurat
+            rank_contrib['foreign_contrib_pct'] = np.nan 
         else:
              rank_contrib = pd.DataFrame({'Stock Code': [], 'foreign_contrib_pct': []})
     else:
@@ -240,14 +229,14 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
         on='Stock Code', how='left'
     )
 
-    rank['NBSA Score'] = to_pct(rank['total_net_ff_30d_rp']) # PERUBAHAN: Gunakan NFF (Rp)
-    rank['Foreign Contrib Score'] = to_pct(rank['foreign_contrib_pct']) # Ini akan 50 (krn NaN)
+    rank['NBSA Score'] = to_pct(rank['total_net_ff_30d_rp']) # Tetap pakai (Rp) untuk skor
+    rank['Foreign Contrib Score'] = to_pct(rank['foreign_contrib_pct']) 
     unusual_bonus = uv.reindex(rank['Stock Code']).fillna(0) * 5
     rank['Potential Score'] = (
         rank['Trend Score'].fillna(0) * W['blend_trend'] +
         rank['Momentum Score'].fillna(0) * W['blend_mom'] +
         rank['NBSA Score'].fillna(50) * W['blend_nbsa'] +
-        rank['Foreign Contrib Score'].fillna(50) * W['blend_fcontrib'] + # FContrib di-null-kan sementara
+        rank['Foreign Contrib Score'].fillna(50) * W['blend_fcontrib'] + 
         unusual_bonus.values * W['blend_unusual']
     )
 
@@ -259,7 +248,6 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
     for c in score_cols:
         if c in top20.columns: top20[c] = pd.to_numeric(top20[c], errors='coerce').round(2)
 
-    # PERUBAHAN: Update kolom untuk NFF (Rp)
     cols_order = ['Analysis Date', 'Stock Code', 'Potential Score', 'Trend Score', 'Momentum Score',
                   'total_net_ff_30d_rp', 'foreign_contrib_pct', 'last_price', 'last_final_signal', 'sector']
     
@@ -298,19 +286,19 @@ def calculate_nff_top_stocks(df: pd.DataFrame, max_date: pd.Timestamp):
         # Filter data untuk periode
         df_period = df[df['Last Trading Date'] >= start_date].copy()
         
-        # PERUBAHAN: Agregasi NFF (Rp)
+        # Agregasi NFF (Rp) - Tetap pakai (Rp) untuk tab ini
         nff_agg = df_period.groupby('Stock Code')['NFF (Rp)'].sum()
         
         # Gabungkan dengan data terakhir
         df_agg = pd.DataFrame(nff_agg)
-        df_agg.columns = ['Total Net FF (Rp)'] # PERUBAHAN: Ubah nama kolom
+        df_agg.columns = ['Total Net FF (Rp)'] 
         df_agg = df_agg.join(latest_prices).join(latest_sectors)
         
         # Ganti nama 'Close'
         df_agg.rename(columns={'Close': 'Harga Terakhir'}, inplace=True)
         
         # Urutkan
-        df_agg = df_agg.sort_values(by='Total Net FF (Rp)', ascending=False) # PERUBAHAN: Sort by Rp
+        df_agg = df_agg.sort_values(by='Total Net FF (Rp)', ascending=False) # Sort by Rp
         
         results[name] = df_agg.reset_index()
 
@@ -410,13 +398,12 @@ if show_only_spike:
 # ==============================================================================
 st.caption(f"Menampilkan data untuk tanggal: **{selected_date.strftime('%d %B %Y')}**")
 
-# PERUBAHAN: Menambahkan Tab 5
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 **Dashboard Harian**",
     "📈 **Analisis Individual**",
     "📋 **Data Filter**",
     "🏆 **Saham Potensial (TOP 20)**",
-    "🌊 **Analisis NFF (Rp)**" # <-- PERUBAHAN: Update Judul Tab
+    "🌊 **Analisis NFF (Rp)**" 
 ])
 
 # --- TAB 1: DASHBOARD HARIAN ---
@@ -547,13 +534,13 @@ with tab2:
             )
 
             # --- Plot 1: Harga (Y-Kanan) vs NFF (Y-Kiri) ---
-            # PERUBAHAN: Warna dan data berdasarkan NFF (Rp)
-            nff_colors = np.where(df_stock['NFF (Rp)'] >= 0, 'green', 'red')
+            # PERUBAHAN: Kembali menggunakan 'Net Foreign Flow' (Shares)
+            nff_colors = np.where(df_stock['Net Foreign Flow'] >= 0, 'green', 'red')
 
             fig_combined.add_trace(go.Bar(
                 x=df_stock['Last Trading Date'],
-                y=df_stock['NFF (Rp)'], # PERUBAHAN: Gunakan NFF (Rp)
-                name='Net Foreign Flow (Rp)', # PERUBAHAN: Ubah label
+                y=df_stock['Net Foreign Flow'], # PERUBAHAN: Kembali ke Shares
+                name='Net Foreign Flow (Shares)', # PERUBAHAN: Ubah label
                 marker_color=nff_colors
             ), row=1, col=1, secondary_y=False)
 
@@ -581,7 +568,7 @@ with tab2:
 
             # --- Konfigurasi Layout ---
             fig_combined.update_layout(
-                title_text=f"Analisis Harga, Foreign Flow (Rp), dan Volume: {stock_to_analyze}", # PERUBAHAN
+                title_text=f"Analisis Harga, Foreign Flow (Shares), dan Volume: {stock_to_analyze}", # PERUBAHAN
                 height=600,
                 xaxis_rangeslider_visible=False,
                 xaxis2_rangeslider_visible=True,
@@ -589,7 +576,7 @@ with tab2:
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             
-            fig_combined.update_yaxes(title_text="Net Foreign Flow (Rp)", row=1, col=1, secondary_y=False, showticklabels=True) # PERUBAHAN
+            fig_combined.update_yaxes(title_text="Net Foreign Flow (Shares)", row=1, col=1, secondary_y=False, showticklabels=True) # PERUBAHAN
             fig_combined.update_yaxes(title_text="Harga Penutupan (Rp)", row=1, col=1, secondary_y=True, showticklabels=True)
             fig_combined.update_yaxes(title_text="Volume (Shares)", row=2, col=1, secondary_y=False, showticklabels=True)
 
@@ -600,7 +587,7 @@ with tab3:
     st.subheader(f"Data Filter (Total: {len(df_filtered)} baris)")
     st.info("Gunakan filter di sidebar kiri untuk menyaring data pada tanggal terpilih.")
     
-    # PERUBAHAN: Tambahkan 'NFF (Rp)' ke daftar kolom
+    # Menampilkan 'NFF (Rp)' dan 'Net Foreign Flow' (Shares)
     cols_to_display = [
         "Stock Code", "Close", "Change %", "Value", 
         "Net Foreign Flow", "NFF (Rp)", "Volume Spike (x)", 
@@ -618,8 +605,8 @@ with tab3:
             "Close": st.column_config.NumberColumn("Harga", format="Rp %d"),
             "Change %": st.column_config.NumberColumn("Change %", format="%.2f"),
             "Value": st.column_config.NumberColumn("Nilai", format="Rp %d"),
-            "Net Foreign Flow": st.column_config.NumberColumn("Net FF (Shares)", format="%d"),
-            "NFF (Rp)": st.column_config.NumberColumn("Net FF (Rp)", format="Rp %d"), # PERUBAHAN
+            "Net Foreign Flow": st.column_config.NumberColumn("Net FF (Shares)", format="%d"), # (Shares)
+            "NFF (Rp)": st.column_config.NumberColumn("Net FF (Rp)", format="Rp %d"), # (Rupiah)
             "Volume Spike (x)": st.column_config.NumberColumn("Spike (x)", format="%.1fx")
         }
     )
@@ -629,7 +616,7 @@ with tab4:
     st.subheader("🏆 Top 20 Saham Paling Potensial (Overall)")
     st.info(f"Kalkulasi skor ini didasarkan pada data 30 hari terakhir, dihitung dari tanggal data terbaru ({max_date.strftime('%d %B %Y')}).")
     
-    # Panggil fungsi kalkulasi skor dan tangkap statusnya
+    # Panggil fungsi kalkulasi skor (tetap pakai NFF Rp)
     df_top20, score_msg, score_status = calculate_potential_score(df, pd.Timestamp(max_date))
     
     # Tampilkan notifikasi (toast/warning) di sini
@@ -648,7 +635,7 @@ with tab4:
                 "Potential Score": st.column_config.NumberColumn("Skor", format="%.2f", help="Skor gabungan dari Trend, Momentum, NBSA, dll."),
                 "Trend Score": st.column_config.NumberColumn("Skor Trend (30h)", format="%.2f"),
                 "Momentum Score": st.column_config.NumberColumn("Skor Momentum (7h)", format="%.2f"),
-                "total_net_ff_30d_rp": st.column_config.NumberColumn("Net FF (30h, Rp)", format="Rp %d"), # PERUBAHAN
+                "total_net_ff_30d_rp": st.column_config.NumberColumn("Net FF (30h, Rp)", format="Rp %d"), # (Rp)
                 "foreign_contrib_pct": st.column_config.NumberColumn("Kontribusi Asing %", format="%.1f%%"),
                 "last_price": st.column_config.NumberColumn("Harga", format="Rp %d"),
                 "last_final_signal": st.column_config.TextColumn("Signal Terakhir"),
@@ -660,16 +647,16 @@ with tab4:
 
 # --- TAB 5: ANALISIS NFF (BARU) ---
 with tab5:
-    st.subheader("🌊 Top Akumulasi Net Foreign Flow (NFF) dalam Rupiah") # PERUBAHAN
+    st.subheader("🌊 Top Akumulasi Net Foreign Flow (NFF) dalam Rupiah") 
     st.info(f"Dihitung berdasarkan data akumulasi dari tanggal data terbaru ({max_date.strftime('%d %B %Y')}) ke belakang.")
     
-    # Panggil fungsi kalkulasi NFF
+    # Panggil fungsi kalkulasi NFF (tetap pakai NFF Rp)
     df_7d, df_30d, df_90d, df_180d = calculate_nff_top_stocks(df, pd.Timestamp(max_date))
     
     # Konfigurasi kolom
     nff_column_config = {
         "Stock Code": st.column_config.TextColumn("Saham"),
-        "Total Net FF (Rp)": st.column_config.NumberColumn("Total Net FF (Rp)", format="Rp %d"), # PERUBAHAN
+        "Total Net FF (Rp)": st.column_config.NumberColumn("Total Net FF (Rp)", format="Rp %d"), # (Rp)
         "Harga Terakhir": st.column_config.NumberColumn("Harga", format="Rp %d"),
         "Sector": st.column_config.TextColumn("Sektor")
     }
