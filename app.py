@@ -43,23 +43,27 @@ W = dict(
 def get_gdrive_service():
     """Membuat service client untuk Google Drive API menggunakan Streamlit Secrets."""
     try:
+        # Coba ambil kredensial dari st.secrets
         creds_json = st.secrets["gcp_service_account"]
         creds = Credentials.from_service_account_info(creds_json, scopes=['https://www.googleapis.com/auth/drive.readonly'])
         service = build('drive', 'v3', credentials=creds, cache_discovery=False)
         return service, None # (service, no_error)
     except KeyError:
+        # Error jika [gcp_service_account] tidak ada di secrets.toml
         msg = "❌ Gagal otentikasi: 'st.secrets' tidak menemukan key [gcp_service_account]. Pastikan 'secrets.toml' sudah benar."
         return None, msg
     except Exception as e:
+        # Error umum lainnya
         msg = f"❌ Gagal otentikasi Google Drive: {e}. Pastikan 'secrets.toml' benar dan Service Account memiliki akses API GDrive."
         return None, msg
 
 # Fungsi utama untuk memuat data
 @st.cache_data(ttl=3600) # Cache data selama 1 jam
 def load_data():
-    """Mencari file di GDrive, men-download, dan membacanya ke Pandas."""
+    """Mencari file di GDrive, men-download, membersihkan, dan membacanya ke Pandas."""
     service, error_msg = get_gdrive_service()
     if error_msg:
+        # Kembalikan error jika otentikasi gagal
         return pd.DataFrame(), error_msg, "error"
 
     try:
@@ -75,6 +79,7 @@ def load_data():
         items = results.get('files', [])
 
         if not items:
+            # Error jika file tidak ditemukan di folder
             msg = f"❌ File '{FILE_NAME}' tidak ditemukan di folder GDrive (ID: {FOLDER_ID}). Pastikan file ada DAN sudah di-share ke email robot."
             return pd.DataFrame(), msg, "error"
 
@@ -92,44 +97,63 @@ def load_data():
         fh.seek(0) # Kembali ke awal file di memori
 
         # 4. Baca ke Pandas
-        df = pd.read_csv(fh)
+        # ==================== PERBAIKAN ANALISIS MENDALAM ====================
         
-        # 5. Lakukan pembersihan data
-        df.columns = df.columns.str.strip()
-        df['Last Trading Date'] = pd.to_datetime(df['Last Trading Date'], errors='coerce') 
-        
+        # Daftar kolom yang kita yakini seharusnya angka
         cols_to_numeric = [
             'Change %', 'Typical Price', 'TPxV', 'VWMA_20D', 'MA20_vol', 
             'MA5_vol', 'Volume Spike (x)', 'Net Foreign Flow', 'Foreign Buy', 'Foreign Sell',
             'Bid/Offer Imbalance', 'Money Flow Value', 'Close', 'Volume', 'Value',
             'High','Low','Change','Previous'
         ]
+        
+        # Paksa baca semua kolom sebagai string dulu (dtype=object)
+        # Ini PENTING agar kita bisa membersihkan string "kotor"
+        df = pd.read_csv(fh, dtype=object)
+        
+        # 5. Lakukan pembersihan data
+        df.columns = df.columns.str.strip()
+        df['Last Trading Date'] = pd.to_datetime(df['Last Trading Date'], errors='coerce') 
+        
+        # Loop khusus untuk membersihkan kolom angka "kotor"
         for col in cols_to_numeric:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+                # 1. Ubah ke string (jaga-jaga), hapus spasi di awal/akhir
+                # 2. Hapus koma (pemisah ribuan)
+                # 3. Hapus 'Rp' dan spasi lagi
+                cleaned_col = df[col].astype(str).str.strip()
+                cleaned_col = cleaned_col.str.replace(',', '', regex=False) # Hapus koma
+                cleaned_col = cleaned_col.str.replace('Rp', '', regex=False).str.strip()
+                
+                # 4. Baru ubah ke numeric. Jika masih gagal, jadikan NaN (errors='coerce')
+                df[col] = pd.to_numeric(cleaned_col, errors='coerce')
 
+        # ==================== PERBAIKAN SELESAI ====================
+
+        # Logika pembersihan standar (setelah jadi numerik)
         if 'Unusual Volume' in df.columns:
             if df['Unusual Volume'].dtype == 'object':
                 df['Unusual Volume'] = df['Unusual Volume'].str.strip().str.lower().isin(['spike volume signifikan', 'true', 'True', 'TRUE'])
             df['Unusual Volume'] = df['Unusual Volume'].astype(bool)
         
         if 'Final Signal' in df.columns:
-            df['Final Signal'] = df['Final Signal'].str.strip()
+             if df['Final Signal'].dtype == 'object':
+                df['Final Signal'] = df['Final Signal'].str.strip()
             
         df = df.dropna(subset=['Last Trading Date', 'Stock Code'])
         
-        # Buat kolom NFF (Rp) menggunakan Typical Price
-        # Ini adalah proxy yang lebih baik daripada Close Price
+        # Buat kolom NFF (Rp) (sekarang dijamin numerik)
         if 'Typical Price' in df.columns and 'Net Foreign Flow' in df.columns:
             df['NFF (Rp)'] = df['Net Foreign Flow'] * df['Typical Price']
         else:
             # Fallback jika 'Typical Price' tidak ada, gunakan Close
             df['NFF (Rp)'] = df['Net Foreign Flow'] * df['Close']
             
-        msg = f"Data berhasil dimuat (file ID: {file_id})."
+        msg = f"Data berhasil dimuat (file ID: {file_id}). Pembersihan angka selesai."
         return df, msg, "success"
     
     except Exception as e:
+        # Error umum saat download/baca
         msg = f"❌ Terjadi error saat memuat data: {e}. Jika ini HttpError 403, pastikan Anda sudah 'Share' folder GDrive ke email Service Account."
         return pd.DataFrame(), msg, "error"
 
@@ -170,14 +194,14 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
     tr = trend_df.groupby('Stock Code').agg(
         last_price=('Close', 'last'),
         last_final_signal=('Final Signal', 'last'),
-        total_net_ff_rp=('NFF (Rp)', 'sum'), # Tetap pakai (Rp) untuk skor
+        total_net_ff_rp=('NFF (Rp)', 'sum'), # Pakai (Rp) untuk skor
         total_money_flow=('Money Flow Value', 'sum'),
         avg_change_pct=('Change %', 'mean'),
         sector=('Sector', 'last')
     ).reset_index()
 
     score_akum = tr['last_final_signal'].map({'Strong Akumulasi': 100, 'Akumulasi': 75, 'Netral': 30, 'Distribusi': 10, 'Strong Distribusi': 0}).fillna(30)
-    score_ff = pct_rank(tr['total_net_ff_rp']) # Tetap pakai (Rp) untuk skor
+    score_ff = pct_rank(tr['total_net_ff_rp']) # Pakai (Rp) untuk skor
     score_mfv = pct_rank(tr['total_money_flow'])
     score_mom = pct_rank(tr['avg_change_pct'])
     tr['Trend Score'] = (score_akum * W['trend_akum'] + score_ff * W['trend_ff'] +
@@ -188,33 +212,24 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
         total_change_pct=('Change %', 'sum'),
         had_unusual_volume=('Unusual Volume', 'any'),
         last_final_signal=('Final Signal', 'last'),
-        total_net_ff_rp=('NFF (Rp)', 'sum') # Tetap pakai (Rp) untuk skor
+        total_net_ff_rp=('NFF (Rp)', 'sum') # Pakai (Rp) untuk skor
     ).reset_index()
 
     s_price = pct_rank(mo['total_change_pct'])
     s_vol = mo['had_unusual_volume'].map({True: 100, False: 20}).fillna(20)
     s_akum = mo['last_final_signal'].map({'Strong Akumulasi': 100, 'Akumulasi': 80, 'Netral': 40, 'Distribusi': 10, 'Strong Distribusi': 0}).fillna(40)
-    s_ff7 = pct_rank(mo['total_net_ff_rp']) # Tetap pakai (Rp) untuk skor
+    s_ff7 = pct_rank(mo['total_net_ff_rp']) # Pakai (Rp) untuk skor
     mo['Momentum Score'] = (s_price * W['mom_price'] + s_vol * W['mom_vol'] +
                             s_akum * W['mom_akum'] + s_ff7 * W['mom_ff'])
 
     # === NBSA & Foreign Contribution (30 hari)
-    nbsa = trend_df.groupby('Stock Code').agg(total_net_ff_30d_rp=('NFF (Rp)', 'sum')).reset_index() # Tetap pakai (Rp) untuk skor
+    nbsa = trend_df.groupby('Stock Code').agg(total_net_ff_30d_rp=('NFF (Rp)', 'sum')).reset_index() # Pakai (Rp) untuk skor
     
-    if {'Foreign Buy', 'Foreign Sell', 'Value'}.issubset(df.columns):
-        tmp = trend_df.copy()
-        tmp['Foreign Value'] = tmp['Foreign Buy'].fillna(0) + tmp['Foreign Sell'].fillna(0)
-        if 'Value' in tmp.columns:
-            contrib = tmp.groupby('Stock Code').agg(
-                total_foreign_value_30d_shares=('Foreign Value','sum'),
-                total_value_30d=('Value', 'sum')
-            ).reset_index()
-            rank_contrib = nbsa.copy()
-            rank_contrib['foreign_contrib_pct'] = np.nan 
-        else:
-             rank_contrib = pd.DataFrame({'Stock Code': [], 'foreign_contrib_pct': []})
-    else:
-        rank_contrib = pd.DataFrame({'Stock Code': [], 'foreign_contrib_pct': []})
+    # Kolom 'Foreign Buy' dan 'Foreign Sell' adalah volume (shares), bukan value (Rp).
+    # Untuk FContrib%, kita butuh Foreign Value vs Total Value.
+    # Karena data kita tidak punya Foreign Value (Rp), kita set FContrib% ke NaN
+    # dan biarkan bobotnya diisi 50 (netral).
+    rank_contrib = pd.DataFrame({'Stock Code': nbsa['Stock Code'], 'foreign_contrib_pct': np.nan})
 
     # === Unusual bonus (hari terakhir)
     uv = last_df.set_index('Stock Code')['Unusual Volume'].map({True: 1, False: 0})
@@ -229,8 +244,8 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
         on='Stock Code', how='left'
     )
 
-    rank['NBSA Score'] = to_pct(rank['total_net_ff_30d_rp']) # Tetap pakai (Rp) untuk skor
-    rank['Foreign Contrib Score'] = to_pct(rank['foreign_contrib_pct']) 
+    rank['NBSA Score'] = to_pct(rank['total_net_ff_30d_rp']) # Pakai (Rp) untuk skor
+    rank['Foreign Contrib Score'] = to_pct(rank['foreign_contrib_pct']) # Akan jadi 50 (netral)
     unusual_bonus = uv.reindex(rank['Stock Code']).fillna(0) * 5
     rank['Potential Score'] = (
         rank['Trend Score'].fillna(0) * W['blend_trend'] +
@@ -286,7 +301,7 @@ def calculate_nff_top_stocks(df: pd.DataFrame, max_date: pd.Timestamp):
         # Filter data untuk periode
         df_period = df[df['Last Trading Date'] >= start_date].copy()
         
-        # Agregasi NFF (Rp) - Tetap pakai (Rp) untuk tab ini
+        # Agregasi NFF (Rp) - Pakai (Rp) untuk tab ini
         nff_agg = df_period.groupby('Stock Code')['NFF (Rp)'].sum()
         
         # Gabungkan dengan data terakhir
@@ -310,6 +325,9 @@ def calculate_nff_top_stocks(df: pd.DataFrame, max_date: pd.Timestamp):
 st.title("📈 Dashboard Analisis Saham IDX")
 st.caption("Menganalisis data historis harian untuk menemukan saham potensial.")
 
+# Pindahkan pemanggilan status ke sini, di luar cache
+status_container = st.empty()
+
 # Panggil data dan tangkap statusnya
 df, status_msg, status_level = load_data()
 
@@ -325,8 +343,8 @@ elif status_level == "error":
 st.sidebar.header("🎛️ Filter Analisis Harian")
 
 if st.sidebar.button("🔄 Refresh Data (Tarik Ulang dari GDrive)"):
-    st.cache_data.clear()
-    st.rerun()
+    st.cache_data.clear() # Hapus cache
+    st.rerun() # Jalankan ulang skrip
 
 # Pindahkan pengecekan df.empty ke sini
 if df.empty:
@@ -368,7 +386,7 @@ selected_signals = st.sidebar.multiselect(
 min_spike = st.sidebar.slider(
     "Minimal Volume Spike (x)",
     min_value=1.0,
-    max_value=float(df_day["Volume Spike (x)"].max() if not df_day.empty else 50.0),
+    max_value=float(df_day["Volume Spike (x)"].max() if not df_day.empty and df_day["Volume Spike (x)"].max() > 1.0 else 50.0),
     value=2.0,
     step=0.5
 )
@@ -432,7 +450,7 @@ with tab1:
                 hide_index=True,
                 column_config={
                     "Stock Code": st.column_config.TextColumn("Saham"),
-                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
+                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # Format float 0 desimal
                     "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
                 }
             )
@@ -446,7 +464,7 @@ with tab1:
                 hide_index=True,
                 column_config={
                     "Stock Code": st.column_config.TextColumn("Saham"),
-                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
+                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # Format float 0 desimal
                     "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
                 }
             )
@@ -460,8 +478,8 @@ with tab1:
                 hide_index=True,
                 column_config={
                     "Stock Code": st.column_config.TextColumn("Saham"),
-                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
-                    "Value": st.column_config.NumberColumn("Nilai", format="Rp %'.0f") # PERUBAHAN: d -> .0f
+                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # Format float 0 desimal
+                    "Value": st.column_config.NumberColumn("Nilai", format="Rp %'.0f") # Format float 0 desimal
                 }
             )
 
@@ -472,7 +490,7 @@ with tab1:
         
         with col_sig:
             st.markdown("**Distribusi Final Signal (Semua Saham)**")
-            if not df_day.empty:
+            if not df_day.empty and 'Final Signal' in df_day.columns:
                 signal_counts = df_day["Final Signal"].value_counts().reset_index()
                 fig_sig = px.bar(
                     signal_counts, 
@@ -488,7 +506,7 @@ with tab1:
         with col_sec:
             st.markdown("**Sektor dengan Unusual Volume Terbanyak**")
             spike_df = df_day[df_day['Unusual Volume'] == True]
-            if not spike_df.empty:
+            if not spike_df.empty and 'Sector' in spike_df.columns:
                 sector_counts = spike_df["Sector"].value_counts().reset_index()
                 fig_sec = px.bar(
                     sector_counts, 
@@ -508,79 +526,95 @@ with tab2:
     st.subheader("Analisis Time Series Saham Individual")
     
     all_stocks = sorted(df["Stock Code"].dropna().unique())
-    stock_to_analyze = st.selectbox(
-        "Pilih Saham untuk dianalisis:",
-        all_stocks,
-        index=all_stocks.index("AADI") if "AADI" in all_stocks else 0
-    )
     
-    if stock_to_analyze:
-        df_stock = df[df['Stock Code'] == stock_to_analyze].sort_values('Last Trading Date')
+    if not all_stocks:
+        st.warning("Tidak ada data saham untuk dipilih.")
+    else:
+        # Cari 'AADI' atau default ke saham pertama
+        default_index = 0
+        if "AADI" in all_stocks:
+            default_index = all_stocks.index("AADI")
+            
+        stock_to_analyze = st.selectbox(
+            "Pilih Saham untuk dianalisis:",
+            all_stocks,
+            index=default_index
+        )
         
-        if df_stock.empty:
-            st.warning(f"Tidak ditemukan data historis untuk {stock_to_analyze}")
-        else:
-            st.info(f"Menampilkan data untuk: **{stock_to_analyze}**")
+        if stock_to_analyze:
+            df_stock = df[df['Stock Code'] == stock_to_analyze].sort_values('Last Trading Date')
             
-            # --- Buat Subplot Gabungan ---
-            fig_combined = make_subplots(
-                rows=2, 
-                cols=1, 
-                shared_xaxes=True, 
-                vertical_spacing=0.05,
-                row_heights=[0.7, 0.3],
-                specs=[[{"secondary_y": True}],
-                       [{"secondary_y": False}]]
-            )
+            if df_stock.empty:
+                st.warning(f"Tidak ditemukan data historis untuk {stock_to_analyze}")
+            else:
+                # Menampilkan kode saham, bukan 'Company Name'
+                st.info(f"Menampilkan data untuk: **{stock_to_analyze}**")
+                
+                # --- Buat Subplot Gabungan ---
+                fig_combined = make_subplots(
+                    rows=2, 
+                    cols=1, 
+                    shared_xaxes=True, 
+                    vertical_spacing=0.05,
+                    row_heights=[0.7, 0.3],
+                    specs=[[{"secondary_y": True}],
+                           [{"secondary_y": False}]]
+                )
 
-            # --- Plot 1: Harga (Y-Kanan) vs NFF (Y-Kiri) ---
-            # PERUBAHAN: Kembali menggunakan 'Net Foreign Flow' (Shares)
-            nff_colors = np.where(df_stock['Net Foreign Flow'] >= 0, 'green', 'red')
+                # --- Plot 1: Harga (Y-Kanan) vs NFF (Y-Kiri) ---
+                # Menggunakan 'Net Foreign Flow' (Shares)
+                nff_colors = np.where(df_stock['Net Foreign Flow'] >= 0, 'green', 'red')
 
-            fig_combined.add_trace(go.Bar(
-                x=df_stock['Last Trading Date'],
-                y=df_stock['Net Foreign Flow'], # PERUBAHAN: Kembali ke Shares
-                name='Net Foreign Flow (Shares)', # PERUBAHAN: Ubah label
-                marker_color=nff_colors
-            ), row=1, col=1, secondary_y=False)
+                fig_combined.add_trace(go.Bar(
+                    x=df_stock['Last Trading Date'],
+                    y=df_stock['Net Foreign Flow'], # Pakai Shares
+                    name='Net Foreign Flow (Shares)', # Label Shares
+                    marker_color=nff_colors,
+                    hovertemplate='Tanggal: %{x}<br>NFF (Shares): %{y:,.0f}<extra></extra>'
+                ), row=1, col=1, secondary_y=False)
 
-            fig_combined.add_trace(go.Scatter(
-                x=df_stock['Last Trading Date'],
-                y=df_stock['Close'],
-                name='Harga Penutupan (Rp)',
-                line=dict(color='blue')
-            ), row=1, col=1, secondary_y=True)
+                fig_combined.add_trace(go.Scatter(
+                    x=df_stock['Last Trading Date'],
+                    y=df_stock['Close'],
+                    name='Harga Penutupan (Rp)',
+                    line=dict(color='blue'),
+                    hovertemplate='Tanggal: %{x}<br>Harga: %{y:,.0f}<extra></extra>'
+                ), row=1, col=1, secondary_y=True)
 
-            # --- Plot 2: Volume (Y-Kiri) ---
-            fig_combined.add_trace(go.Bar(
-                x=df_stock['Last Trading Date'],
-                y=df_stock['Volume'],
-                name='Volume (Shares)',
-                marker_color='gray'
-            ), row=2, col=1, secondary_y=False)
+                # --- Plot 2: Volume (Y-Kiri) ---
+                fig_combined.add_trace(go.Bar(
+                    x=df_stock['Last Trading Date'],
+                    y=df_stock['Volume'],
+                    name='Volume (Shares)',
+                    marker_color='gray',
+                    hovertemplate='Tanggal: %{x}<br>Volume: %{y:,.0f}<extra></extra>'
+                ), row=2, col=1, secondary_y=False)
 
-            fig_combined.add_trace(go.Scatter(
-                x=df_stock['Last Trading Date'],
-                y=df_stock['MA20_vol'],
-                name='MA20 Volume (Shares)',
-                line=dict(color='red', dash='dot')
-            ), row=2, col=1, secondary_y=False)
+                if 'MA20_vol' in df_stock.columns:
+                    fig_combined.add_trace(go.Scatter(
+                        x=df_stock['Last Trading Date'],
+                        y=df_stock['MA20_vol'],
+                        name='MA20 Volume (Shares)',
+                        line=dict(color='red', dash='dot'),
+                        hovertemplate='Tanggal: %{x}<br>MA20 Vol: %{y:,.0f}<extra></extra>'
+                    ), row=2, col=1, secondary_y=False)
 
-            # --- Konfigurasi Layout ---
-            fig_combined.update_layout(
-                title_text=f"Analisis Harga, Foreign Flow (Shares), dan Volume: {stock_to_analyze}", # PERUBAHAN
-                height=600,
-                xaxis_rangeslider_visible=False,
-                xaxis2_rangeslider_visible=True,
-                hovermode="x unified",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            
-            fig_combined.update_yaxes(title_text="Net Foreign Flow (Shares)", row=1, col=1, secondary_y=False, showticklabels=True) # PERUBAHAN
-            fig_combined.update_yaxes(title_text="Harga Penutupan (Rp)", row=1, col=1, secondary_y=True, showticklabels=True)
-            fig_combined.update_yaxes(title_text="Volume (Shares)", row=2, col=1, secondary_y=False, showticklabels=True)
+                # --- Konfigurasi Layout ---
+                fig_combined.update_layout(
+                    title_text=f"Analisis Harga, Foreign Flow (Shares), dan Volume: {stock_to_analyze}",
+                    height=600,
+                    xaxis_rangeslider_visible=False,
+                    xaxis2_rangeslider_visible=True, # Tampilkan rangeslider di chart bawah
+                    hovermode="x unified",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                
+                # Biarkan Plotly auto-range dan tampilkan label
+                fig_combined.update_yaxes(title_text="Net Foreign Flow (Shares)", row=1, col=1, secondary_y=False, showticklabels=True)
+                fig_combined.update_yaxes(title_text="Harga Penutupan (Rp)", row=1, col=1, secondary_y=True, showticklabels=True)
+                fig_combined.update_yaxes(title_text="Volume (Shares)", row=2, col=1, secondary_y=False, showticklabels=True)
 
-            st.plotly_chart(fig_combined, use_container_width=True)
+                st.plotly_chart(fig_combined, use_container_width=True)
 
 # --- TAB 3: DATA FILTER ---
 with tab3:
@@ -602,11 +636,11 @@ with tab3:
         hide_index=True,
         column_config={
             "Stock Code": st.column_config.TextColumn("Saham"),
-            "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
+            "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # Format float 0 desimal
             "Change %": st.column_config.NumberColumn("Change %", format="%.2f"),
-            "Value": st.column_config.NumberColumn("Nilai", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
-            "Net Foreign Flow": st.column_config.NumberColumn("Net FF (Shares)", format="%'d"), # Biarkan 'd' (integer)
-            "NFF (Rp)": st.column_config.NumberColumn("Net FF (Rp)", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
+            "Value": st.column_config.NumberColumn("Nilai", format="Rp %'.0f"), # Format float 0 desimal
+            "Net Foreign Flow": st.column_config.NumberColumn("Net FF (Shares)", format="%'d"), # Format integer
+            "NFF (Rp)": st.column_config.NumberColumn("Net FF (Rp)", format="Rp %'.0f"), # Format float 0 desimal
             "Volume Spike (x)": st.column_config.NumberColumn("Spike (x)", format="%.1fx")
         }
     )
@@ -616,10 +650,10 @@ with tab4:
     st.subheader("🏆 Top 20 Saham Paling Potensial (Overall)")
     st.info(f"Kalkulasi skor ini didasarkan pada data 30 hari terakhir, dihitung dari tanggal data terbaru ({max_date.strftime('%d %B %Y')}).")
     
-    # Panggil fungsi kalkulasi skor (tetap pakai NFF Rp)
+    # Panggil fungsi kalkulasi skor (pakai NFF Rp)
     df_top20, score_msg, score_status = calculate_potential_score(df, pd.Timestamp(max_date))
     
-    # Tampilkan notifikasi (toast/warning) di sini
+    # Tampilkan notifikasi (toast/warning) di luar fungsi cache
     if score_status == "success":
         st.toast(score_msg, icon="🏆")
     elif score_status == "warning":
@@ -635,9 +669,9 @@ with tab4:
                 "Potential Score": st.column_config.NumberColumn("Skor", format="%.2f", help="Skor gabungan dari Trend, Momentum, NBSA, dll."),
                 "Trend Score": st.column_config.NumberColumn("Skor Trend (30h)", format="%.2f"),
                 "Momentum Score": st.column_config.NumberColumn("Skor Momentum (7h)", format="%.2f"),
-                "total_net_ff_30d_rp": st.column_config.NumberColumn("Net FF (30h, Rp)", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
+                "total_net_ff_30d_rp": st.column_config.NumberColumn("Net FF (30h, Rp)", format="Rp %'.0f"), # Format float 0 desimal
                 "foreign_contrib_pct": st.column_config.NumberColumn("Kontribusi Asing %", format="%.1f%%"),
-                "last_price": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
+                "last_price": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # Format float 0 desimal
                 "last_final_signal": st.column_config.TextColumn("Signal Terakhir"),
                 "sector": st.column_config.TextColumn("Sektor")
             }
@@ -650,14 +684,14 @@ with tab5:
     st.subheader("🌊 Top Akumulasi Net Foreign Flow (NFF) dalam Rupiah") 
     st.info(f"Dihitung berdasarkan data akumulasi dari tanggal data terbaru ({max_date.strftime('%d %B %Y')}) ke belakang.")
     
-    # Panggil fungsi kalkulasi NFF (tetap pakai NFF Rp)
+    # Panggil fungsi kalkulasi NFF (pakai NFF Rp)
     df_7d, df_30d, df_90d, df_180d = calculate_nff_top_stocks(df, pd.Timestamp(max_date))
     
     # Konfigurasi kolom
     nff_column_config = {
         "Stock Code": st.column_config.TextColumn("Saham"),
-        "Total Net FF (Rp)": st.column_config.NumberColumn("Total Net FF (Rp)", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
-        "Harga Terakhir": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
+        "Total Net FF (Rp)": st.column_config.NumberColumn("Total Net FF (Rp)", format="Rp %'.0f"), # Format float 0 desimal
+        "Harga Terakhir": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # Format float 0 desimal
         "Sector": st.column_config.TextColumn("Sektor")
     }
     
@@ -696,7 +730,4 @@ with tab5:
             hide_index=True,
             column_config=nff_column_config
         )
-
-
-
 
