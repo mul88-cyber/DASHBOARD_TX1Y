@@ -434,7 +434,10 @@ with tab1:
         col1, col2, col3 = st.columns(3)
         col1.metric("Total Saham Aktif", f"{len(df_day['Stock Code'].unique()):,.0f}")
         col2.metric("Saham Unusual Volume", f"{int(df_day['Unusual Volume'].sum()):,.0f}")
-        col3.metric("Total Nilai Transaksi", f"Rp {df_day['Value'].sum():,.0f}")
+        
+        # --- PERBAIKAN MANUAL FORMAT (METRIC) ---
+        metric_value = df_day['Value'].sum()
+        col3.metric("Total Nilai Transaksi", f"Rp {metric_value:,.0f}" if pd.notna(metric_value) else "N/A")
 
         st.markdown("---")
         st.subheader("Top Movers & Most Active")
@@ -444,27 +447,39 @@ with tab1:
         with col_g:
             st.markdown("**Top 10 Gainers (%)**")
             top_gainers = df_day.sort_values("Change %", ascending=False).head(10)
+            
+            # --- PERBAIKAN MANUAL FORMAT ---
+            # Buat copy untuk ditampilkan
+            df_display_g = top_gainers[['Stock Code', 'Close', 'Change %']].copy()
+            # Terapkan format string manual
+            df_display_g['Close'] = df_display_g['Close'].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else 'N/A')
+            
             st.dataframe(
-                top_gainers[['Stock Code', 'Close', 'Change %']], 
+                df_display_g, 
                 use_container_width=True, 
                 hide_index=True,
                 column_config={
                     "Stock Code": st.column_config.TextColumn("Saham"),
-                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # Format float 0 desimal
-                    "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
+                    "Close": st.column_config.TextColumn("Harga"), # Tampilkan sebagai Teks
+                    "Change %": st.column_config.NumberColumn("Change %", format="%.2f") # Angka bisa diformat
                 }
             )
 
         with col_l:
             st.markdown("**Top 10 Losers (%)**")
             top_losers = df_day.sort_values("Change %", ascending=True).head(10)
+
+            # --- PERBAIKAN MANUAL FORMAT ---
+            df_display_l = top_losers[['Stock Code', 'Close', 'Change %']].copy()
+            df_display_l['Close'] = df_display_l['Close'].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else 'N/A')
+
             st.dataframe(
-                top_losers[['Stock Code', 'Close', 'Change %']], 
+                df_display_l, 
                 use_container_width=True, 
                 hide_index=True,
                 column_config={
                     "Stock Code": st.column_config.TextColumn("Saham"),
-                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # Format float 0 desimal
+                    "Close": st.column_config.TextColumn("Harga"), # Tampilkan sebagai Teks
                     "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
                 }
             )
@@ -472,14 +487,20 @@ with tab1:
         with col_v:
             st.markdown("**Top 10 by Value**")
             top_value = df_day.sort_values("Value", ascending=False).head(10)
+
+            # --- PERBAIKAN MANUAL FORMAT ---
+            df_display_v = top_value[['Stock Code', 'Close', 'Value']].copy()
+            df_display_v['Close'] = df_display_v['Close'].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else 'N/A')
+            df_display_v['Value'] = df_display_v['Value'].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else 'N/A')
+
             st.dataframe(
-                top_value[['Stock Code', 'Close', 'Value']], 
+                df_display_v, 
                 use_container_width=True, 
                 hide_index=True,
                 column_config={
                     "Stock Code": st.column_config.TextColumn("Saham"),
-                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # Format float 0 desimal
-                    "Value": st.column_config.NumberColumn("Nilai", format="Rp %'.0f") # Format float 0 desimal
+                    "Close": st.column_config.TextColumn("Harga"), # Tampilkan sebagai Teks
+                    "Value": st.column_config.TextColumn("Nilai")  # Tampilkan sebagai Teks
                 }
             )
 
@@ -570,7 +591,7 @@ with tab2:
                     y=df_stock['Net Foreign Flow'], # Pakai Shares
                     name='Net Foreign Flow (Shares)', # Label Shares
                     marker_color=nff_colors,
-                    hovertemplate='Tanggal: %{x}<br>NFF (Shares): %{y:,.0f}<extra></extra>'
+                    hovertemplate='Tanggal: %{x}<br>NFF (Shares): %{y:,.0f}<extra></extra>' # Format hover
                 ), row=1, col=1, secondary_y=False)
 
                 fig_combined.add_trace(go.Scatter(
@@ -578,7 +599,7 @@ with tab2:
                     y=df_stock['Close'],
                     name='Harga Penutupan (Rp)',
                     line=dict(color='blue'),
-                    hovertemplate='Tanggal: %{x}<br>Harga: %{y:,.0f}<extra></extra>'
+                    hovertemplate='Tanggal: %{x}<br>Harga: %{y:,.0f}<extra></extra>' # Format hover
                 ), row=1, col=1, secondary_y=True)
 
                 # --- Plot 2: Volume (Y-Kiri) ---
@@ -587,7 +608,7 @@ with tab2:
                     y=df_stock['Volume'],
                     name='Volume (Shares)',
                     marker_color='gray',
-                    hovertemplate='Tanggal: %{x}<br>Volume: %{y:,.0f}<extra></extra>'
+                    hovertemplate='Tanggal: %{x}<br>Volume: %{y:,.0f}<extra></extra>' # Format hover
                 ), row=2, col=1, secondary_y=False)
 
                 if 'MA20_vol' in df_stock.columns:
@@ -596,7 +617,7 @@ with tab2:
                         y=df_stock['MA20_vol'],
                         name='MA20 Volume (Shares)',
                         line=dict(color='red', dash='dot'),
-                        hovertemplate='Tanggal: %{x}<br>MA20 Vol: %{y:,.0f}<extra></extra>'
+                        hovertemplate='Tanggal: %{x}<br>MA20 Vol: %{y:,.0f}<extra></extra>' # Format hover
                     ), row=2, col=1, secondary_y=False)
 
                 # --- Konfigurasi Layout ---
@@ -630,18 +651,31 @@ with tab3:
     # Pastikan semua kolom ada sebelum ditampilkan
     cols_in_df = [col for col in cols_to_display if col in df_filtered.columns]
     
+    # --- PERBAIKAN MANUAL FORMAT ---
+    df_display_filtered = df_filtered[cols_in_df].copy()
+    format_cols_rp = ['Close', 'Value', 'NFF (Rp)']
+    for col in format_cols_rp:
+        if col in df_display_filtered.columns:
+            # Terapkan format string manual
+            df_display_filtered[col] = df_display_filtered[col].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else 'N/A')
+            
+    if 'Net Foreign Flow' in df_display_filtered.columns:
+         # Terapkan format string manual (tanpa Rp)
+         df_display_filtered['Net Foreign Flow'] = df_display_filtered['Net Foreign Flow'].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else 'N/A')
+
     st.dataframe(
-        df_filtered[cols_in_df],
+        df_display_filtered,
         use_container_width=True,
         hide_index=True,
         column_config={
             "Stock Code": st.column_config.TextColumn("Saham"),
-            "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # Format float 0 desimal
+            "Close": st.column_config.TextColumn("Harga"), # Tampilkan sebagai Teks
             "Change %": st.column_config.NumberColumn("Change %", format="%.2f"),
-            "Value": st.column_config.NumberColumn("Nilai", format="Rp %'.0f"), # Format float 0 desimal
-            "Net Foreign Flow": st.column_config.NumberColumn("Net FF (Shares)", format="%'d"), # Format integer
-            "NFF (Rp)": st.column_config.NumberColumn("Net FF (Rp)", format="Rp %'.0f"), # Format float 0 desimal
+            "Value": st.column_config.TextColumn("Nilai"), # Tampilkan sebagai Teks
+            "Net Foreign Flow": st.column_config.TextColumn("Net FF (Shares)"), # Tampilkan sebagai Teks
+            "NFF (Rp)": st.column_config.TextColumn("Net FF (Rp)"), # Tampilkan sebagai Teks
             "Volume Spike (x)": st.column_config.NumberColumn("Spike (x)", format="%.1fx")
+            # Kolom lain (Unusual Volume, Signal, Sector) akan tampil apa adanya (OK)
         }
     )
 
@@ -660,8 +694,14 @@ with tab4:
         st.warning(score_msg)
     
     if not df_top20.empty:
+        # --- PERBAIKAN MANUAL FORMAT ---
+        df_display_top20 = df_top20.copy()
+        # Terapkan format string manual
+        df_display_top20['total_net_ff_30d_rp'] = df_display_top20['total_net_ff_30d_rp'].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else 'N/A')
+        df_display_top20['last_price'] = df_display_top20['last_price'].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else 'N/A')
+
         st.dataframe(
-            df_top20,
+            df_display_top20,
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -669,9 +709,9 @@ with tab4:
                 "Potential Score": st.column_config.NumberColumn("Skor", format="%.2f", help="Skor gabungan dari Trend, Momentum, NBSA, dll."),
                 "Trend Score": st.column_config.NumberColumn("Skor Trend (30h)", format="%.2f"),
                 "Momentum Score": st.column_config.NumberColumn("Skor Momentum (7h)", format="%.2f"),
-                "total_net_ff_30d_rp": st.column_config.NumberColumn("Net FF (30h, Rp)", format="Rp %'.0f"), # Format float 0 desimal
+                "total_net_ff_30d_rp": st.column_config.TextColumn("Net FF (30h, Rp)"), # Tampilkan sebagai Teks
                 "foreign_contrib_pct": st.column_config.NumberColumn("Kontribusi Asing %", format="%.1f%%"),
-                "last_price": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # Format float 0 desimal
+                "last_price": st.column_config.TextColumn("Harga"), # Tampilkan sebagai Teks
                 "last_final_signal": st.column_config.TextColumn("Signal Terakhir"),
                 "sector": st.column_config.TextColumn("Sektor")
             }
@@ -687,11 +727,18 @@ with tab5:
     # Panggil fungsi kalkulasi NFF (pakai NFF Rp)
     df_7d, df_30d, df_90d, df_180d = calculate_nff_top_stocks(df, pd.Timestamp(max_date))
     
-    # Konfigurasi kolom
+    # --- FUNGSI HELPER UNTUK FORMAT MANUAL DI TAB INI ---
+    def format_nff_df(df_in):
+        df_display = df_in.head(20).copy()
+        df_display['Total Net FF (Rp)'] = df_display['Total Net FF (Rp)'].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else 'N/A')
+        df_display['Harga Terakhir'] = df_display['Harga Terakhir'].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else 'N/A')
+        return df_display
+
+    # Konfigurasi kolom (sekarang hanya untuk rename)
     nff_column_config = {
         "Stock Code": st.column_config.TextColumn("Saham"),
-        "Total Net FF (Rp)": st.column_config.NumberColumn("Total Net FF (Rp)", format="Rp %'.0f"), # Format float 0 desimal
-        "Harga Terakhir": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # Format float 0 desimal
+        "Total Net FF (Rp)": st.column_config.TextColumn("Total Net FF (Rp)"), # Tampilkan sebagai Teks
+        "Harga Terakhir": st.column_config.TextColumn("Harga"), # Tampilkan sebagai Teks
         "Sector": st.column_config.TextColumn("Sektor")
     }
     
@@ -700,7 +747,7 @@ with tab5:
     with col1:
         st.markdown("**1 Minggu Terakhir (7 Hari)**")
         st.dataframe(
-            df_7d.head(20),
+            format_nff_df(df_7d), # Terapkan format manual
             use_container_width=True,
             hide_index=True,
             column_config=nff_column_config
@@ -708,7 +755,7 @@ with tab5:
         
         st.markdown("**3 Bulan Terakhir (90 Hari)**")
         st.dataframe(
-            df_90d.head(20),
+            format_nff_df(df_90d), # Terapkan format manual
             use_container_width=True,
             hide_index=True,
             column_config=nff_column_config
@@ -717,7 +764,7 @@ with tab5:
     with col2:
         st.markdown("**1 Bulan Terakhir (30 Hari)**")
         st.dataframe(
-            df_30d.head(20),
+            format_nff_df(df_30d), # Terapkan format manual
             use_container_width=True,
             hide_index=True,
             column_config=nff_column_config
@@ -725,7 +772,7 @@ with tab5:
         
         st.markdown("**6 Bulan Terakhir (180 Hari)**")
         st.dataframe(
-            df_180d.head(20),
+            format_nff_df(df_180d), # Terapkan format manual
             use_container_width=True,
             hide_index=True,
             column_config=nff_column_config
