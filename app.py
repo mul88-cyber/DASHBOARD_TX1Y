@@ -39,36 +39,33 @@ W = dict(
 # 📦 3) FUNGSI MEMUAT DATA (via SERVICE ACCOUNT)
 # ==============================================================================
 
-# Fungsi helper untuk otentikasi
+# PERUBAHAN: Fungsi helper ini sekarang mengembalikan (service, error_message)
+# dan TIDAK memanggil st.error()
 def get_gdrive_service():
     """Membuat service client untuk Google Drive API menggunakan Streamlit Secrets."""
     try:
-        # Ambil kredensial dari secrets.toml
         creds_json = st.secrets["gcp_service_account"]
         creds = Credentials.from_service_account_info(creds_json, scopes=['https://www.googleapis.com/auth/drive.readonly'])
         service = build('drive', 'v3', credentials=creds, cache_discovery=False)
-        return service
+        return service, None # (service, no_error)
     except KeyError:
-        st.error("❌ Gagal otentikasi: 'st.secrets' tidak menemukan key [gcp_service_account].")
-        st.error("Pastikan Anda sudah menyalin 'secrets.toml' dengan benar ke Streamlit Cloud Secrets.")
-        return None
+        msg = "❌ Gagal otentikasi: 'st.secrets' tidak menemukan key [gcp_service_account]. Pastikan 'secrets.toml' sudah benar."
+        return None, msg
     except Exception as e:
-        st.error(f"❌ Gagal otentikasi Google Drive: {e}")
-        st.error("Pastikan 'secrets.toml' Anda sudah benar dan Service Account memiliki akses ke API GDrive.")
-        return None
+        msg = f"❌ Gagal otentikasi Google Drive: {e}. Pastikan 'secrets.toml' benar dan Service Account memiliki akses API GDrive."
+        return None, msg
 
-# Fungsi utama untuk memuat data
+# PERUBAHAN: Fungsi ini sekarang mengembalikan (data, message, status_level)
+# dan TIDAK memanggil st.toast() atau st.error()
 @st.cache_data(ttl=3600) # Cache data selama 1 jam
 def load_data():
-    """Mencari file di GDrive folder, men-download, dan membacanya ke Pandas."""
-    service = get_gdrive_service()
-    if service is None:
-        return pd.DataFrame()
+    """Mencari file di GDrive, men-download, dan membacanya ke Pandas."""
+    service, error_msg = get_gdrive_service()
+    if error_msg:
+        return pd.DataFrame(), error_msg, "error"
 
     try:
         # 1. Cari file ID terbaru di dalam folder
-        # PERUBAHAN: Pesan 'mengganggu' diubah menjadi st.toast()
-        st.toast(f"Mencari file '{FILE_NAME}' di folder GDrive...")
         query = f"'{FOLDER_ID}' in parents and name='{FILE_NAME}' and trashed=false"
         results = service.files().list(
             q=query,
@@ -80,15 +77,12 @@ def load_data():
         items = results.get('files', [])
 
         if not items:
-            st.error(f"❌ File '{FILE_NAME}' tidak ditemukan di folder GDrive.")
-            st.error(f"Pastikan file ada di folder ID: {FOLDER_ID} DAN sudah di-share ke email robot.")
-            return pd.DataFrame()
+            msg = f"❌ File '{FILE_NAME}' tidak ditemukan di folder GDrive (ID: {FOLDER_ID}). Pastikan file ada DAN sudah di-share ke email robot."
+            return pd.DataFrame(), msg, "error"
 
         # 2. Dapatkan File ID dinamis
         file_id = items[0]['id']
-        # PERUBAHAN: Pesan 'mengganggu' diubah menjadi st.toast()
-        st.toast(f"File ditemukan (ID: {file_id}). Men-download data...")
-
+        
         # 3. Download file content
         request = service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
@@ -125,14 +119,13 @@ def load_data():
             df['Final Signal'] = df['Final Signal'].str.strip()
             
         df = df.dropna(subset=['Last Trading Date', 'Stock Code'])
-        # PERUBAHAN: Pesan 'mengganggu' diubah menjadi st.toast()
-        st.toast("Data berhasil dimuat dan dibersihkan.", icon="✅")
-        return df
+        
+        msg = f"Data berhasil dimuat (file ID: {file_id})."
+        return df, msg, "success"
     
     except Exception as e:
-        st.error(f"❌ Terjadi error saat memuat data: {e}")
-        st.error("Jika ini HttpError 403, pastikan Anda sudah 'Share' folder GDrive ke email Service Account.")
-        return pd.DataFrame()
+        msg = f"❌ Terjadi error saat memuat data: {e}. Jika ini HttpError 403, pastikan Anda sudah 'Share' folder GDrive ke email Service Account."
+        return pd.DataFrame(), msg, "error"
 
 # ==============================================================================
 # 🛠️ 4) FUNGSI KALKULASI SKOR (dari Colab)
@@ -151,11 +144,11 @@ def to_pct(s: pd.Series):
     if pd.isna(mn) or pd.isna(mx) or mn == mx: return pd.Series(50, index=s.index)
     return (s - mn) / (mx - mn) * 100
 
+# PERUBAHAN: Fungsi ini sekarang mengembalikan (data, message, status_level)
+# dan TIDAK memanggil st.toast() atau st.warning()
 @st.cache_data(ttl=3600)
 def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
     """Menjalankan logika scoring dari skrip Colab pada data yang ada."""
-    
-    st.toast("Menghitung skor potensial untuk Top 20...", icon="⏳")
     
     # === Window tanggal
     trend_start = latest_date - pd.Timedelta(days=30)
@@ -166,8 +159,8 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
     last_df = df[df['Last Trading Date'] == latest_date].copy()
 
     if trend_df.empty or mom_df.empty or last_df.empty:
-        st.warning("Data tidak cukup untuk menghitung skor (kurang dari 30 hari).")
-        return pd.DataFrame()
+        msg = "Data tidak cukup untuk menghitung skor (kurang dari 30 hari)."
+        return pd.DataFrame(), msg, "warning"
 
     # === TR E N D (30 hari)
     tr = trend_df.groupby('Stock Code').agg(
@@ -254,8 +247,9 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
         if c not in top20.columns: top20[c] = np.nan
         
     top20 = top20[cols_order]
-    st.toast("Skor potensial berhasil dihitung.", icon="🏆")
-    return top20
+    
+    msg = "Skor potensial berhasil dihitung."
+    return top20, msg, "success"
 
 # ==============================================================================
 # 💎 5) LAYOUT UTAMA (HEADER)
@@ -263,8 +257,14 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
 st.title("📈 Dashboard Analisis Saham IDX")
 st.caption("Menganalisis data historis harian untuk menemukan saham potensial.")
 
-# Panggil data
-df = load_data()
+# PERUBAHAN: Panggil data dan tangkap statusnya
+df, status_msg, status_level = load_data()
+
+# PERUBAHAN: Tampilkan notifikasi (toast/error) di sini, BUKAN di dalam load_data
+if status_level == "success":
+    st.toast(status_msg, icon="✅")
+elif status_level == "error":
+    st.error(status_msg)
 
 # ==============================================================================
 # 🧭 6) SIDEBAR FILTER
@@ -275,9 +275,10 @@ if st.sidebar.button("🔄 Refresh Data (Tarik Ulang dari GDrive)"):
     st.cache_data.clear()
     st.rerun()
 
+# PERUBAHAN: Pindahkan pengecekan df.empty ke sini
 if df.empty:
     st.warning("⚠️ Data belum berhasil dimuat. Silakan cek 'secrets.toml' dan izin GDrive Anda, lalu klik 'Refresh Data'.")
-    st.stop()
+    st.stop() # Hentikan eksekusi skrip jika data gagal dimuat
 
 # --- Filter Tanggal ---
 max_date = df['Last Trading Date'].max().date()
@@ -478,19 +479,15 @@ with tab2:
             )
 
             # --- Plot 1: Harga (Y-Kanan) vs NFF (Y-Kiri) ---
-            
-            # PERUBAHAN: Tentukan warna NFF (Merah/Hijau)
             nff_colors = np.where(df_stock['Net Foreign Flow'] >= 0, 'green', 'red')
 
-            # Tambah NFF (Batang) ke Y-axis KIRI (default)
             fig_combined.add_trace(go.Bar(
                 x=df_stock['Last Trading Date'],
                 y=df_stock['Net Foreign Flow'],
                 name='Net Foreign Flow (Shares)',
-                marker_color=nff_colors # PERUBAHAN: Terapkan warna
+                marker_color=nff_colors
             ), row=1, col=1, secondary_y=False)
 
-            # Tambah Harga (Garis) ke Y-axis KANAN
             fig_combined.add_trace(go.Scatter(
                 x=df_stock['Last Trading Date'],
                 y=df_stock['Close'],
@@ -499,8 +496,6 @@ with tab2:
             ), row=1, col=1, secondary_y=True)
 
             # --- Plot 2: Volume (Y-Kiri) ---
-            
-            # Tambah Volume (Batang)
             fig_combined.add_trace(go.Bar(
                 x=df_stock['Last Trading Date'],
                 y=df_stock['Volume'],
@@ -508,7 +503,6 @@ with tab2:
                 marker_color='gray'
             ), row=2, col=1, secondary_y=False)
 
-            # Tambah MA20 Volume (Garis)
             fig_combined.add_trace(go.Scatter(
                 x=df_stock['Last Trading Date'],
                 y=df_stock['MA20_vol'],
@@ -556,8 +550,14 @@ with tab4:
     st.subheader("🏆 Top 20 Saham Paling Potensial (Overall)")
     st.info(f"Kalkulasi skor ini didasarkan pada data 30 hari terakhir, dihitung dari tanggal data terbaru ({max_date.strftime('%d %B %Y')}).")
     
-    # Panggil fungsi kalkulasi skor
-    df_top20 = calculate_potential_score(df, pd.Timestamp(max_date))
+    # PERUBAHAN: Panggil fungsi kalkulasi skor dan tangkap statusnya
+    df_top20, score_msg, score_status = calculate_potential_score(df, pd.Timestamp(max_date))
+    
+    # PERUBAHAN: Tampilkan notifikasi (toast/warning) di sini
+    if score_status == "success":
+        st.toast(score_msg, icon="🏆")
+    elif score_status == "warning":
+        st.warning(score_msg)
     
     if not df_top20.empty:
         st.dataframe(
@@ -577,4 +577,5 @@ with tab4:
             }
         )
     else:
+        # Peringatan sudah ditampilkan di atas, tapi ini sebagai fallback
         st.warning("Gagal menghitung skor. Periksa apakah data cukup.")
