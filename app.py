@@ -39,8 +39,7 @@ W = dict(
 # 📦 3) FUNGSI MEMUAT DATA (via SERVICE ACCOUNT)
 # ==============================================================================
 
-# PERUBAHAN: Fungsi helper ini sekarang mengembalikan (service, error_message)
-# dan TIDAK memanggil st.error()
+# Fungsi helper untuk otentikasi
 def get_gdrive_service():
     """Membuat service client untuk Google Drive API menggunakan Streamlit Secrets."""
     try:
@@ -55,8 +54,7 @@ def get_gdrive_service():
         msg = f"❌ Gagal otentikasi Google Drive: {e}. Pastikan 'secrets.toml' benar dan Service Account memiliki akses API GDrive."
         return None, msg
 
-# PERUBAHAN: Fungsi ini sekarang mengembalikan (data, message, status_level)
-# dan TIDAK memanggil st.toast() atau st.error()
+# Fungsi utama untuk memuat data
 @st.cache_data(ttl=3600) # Cache data selama 1 jam
 def load_data():
     """Mencari file di GDrive, men-download, dan membacanya ke Pandas."""
@@ -128,7 +126,7 @@ def load_data():
         return pd.DataFrame(), msg, "error"
 
 # ==============================================================================
-# 🛠️ 4) FUNGSI KALKULASI SKOR (dari Colab)
+# 🛠️ 4) FUNGSI KALKULASI SKOR
 # ==============================================================================
 
 def pct_rank(s: pd.Series):
@@ -144,8 +142,6 @@ def to_pct(s: pd.Series):
     if pd.isna(mn) or pd.isna(mx) or mn == mx: return pd.Series(50, index=s.index)
     return (s - mn) / (mx - mn) * 100
 
-# PERUBAHAN: Fungsi ini sekarang mengembalikan (data, message, status_level)
-# dan TIDAK memanggil st.toast() atau st.warning()
 @st.cache_data(ttl=3600)
 def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
     """Menjalankan logika scoring dari skrip Colab pada data yang ada."""
@@ -252,22 +248,67 @@ def calculate_potential_score(df: pd.DataFrame, latest_date: pd.Timestamp):
     return top20, msg, "success"
 
 # ==============================================================================
-# 💎 5) LAYOUT UTAMA (HEADER)
+# 🛠️ 5) FUNGSI KALKULASI NFF (BARU)
+# ==============================================================================
+@st.cache_data(ttl=3600)
+def calculate_nff_top_stocks(df: pd.DataFrame, max_date: pd.Timestamp):
+    """Menghitung agregat NFF untuk beberapa periode dari max_date."""
+    
+    periods = {
+        '7D': 7,
+        '30D': 30,
+        '90D': 90,
+        '180D': 180
+    }
+    
+    results = {}
+    
+    # Ambil data harga dan sektor terakhir untuk merge
+    latest_data = df[df['Last Trading Date'] == max_date].set_index('Stock Code')
+    latest_prices = latest_data['Close']
+    latest_sectors = latest_data['Sector']
+
+    for name, days in periods.items():
+        start_date = max_date - pd.Timedelta(days=days)
+        
+        # Filter data untuk periode
+        df_period = df[df['Last Trading Date'] >= start_date].copy()
+        
+        # Agregasi NFF
+        nff_agg = df_period.groupby('Stock Code')['Net Foreign Flow'].sum()
+        
+        # Gabungkan dengan data terakhir
+        df_agg = pd.DataFrame(nff_agg)
+        df_agg.columns = ['Total Net FF (Shares)']
+        df_agg = df_agg.join(latest_prices).join(latest_sectors)
+        
+        # Ganti nama 'Close'
+        df_agg.rename(columns={'Close': 'Harga Terakhir'}, inplace=True)
+        
+        # Urutkan
+        df_agg = df_agg.sort_values(by='Total Net FF (Shares)', ascending=False)
+        
+        results[name] = df_agg.reset_index()
+
+    return results['7D'], results['30D'], results['90D'], results['180D']
+
+# ==============================================================================
+# 💎 6) LAYOUT UTAMA (HEADER)
 # ==============================================================================
 st.title("📈 Dashboard Analisis Saham IDX")
 st.caption("Menganalisis data historis harian untuk menemukan saham potensial.")
 
-# PERUBAHAN: Panggil data dan tangkap statusnya
+# Panggil data dan tangkap statusnya
 df, status_msg, status_level = load_data()
 
-# PERUBAHAN: Tampilkan notifikasi (toast/error) di sini, BUKAN di dalam load_data
+# Tampilkan notifikasi (toast/error) di sini, BUKAN di dalam load_data
 if status_level == "success":
     st.toast(status_msg, icon="✅")
 elif status_level == "error":
     st.error(status_msg)
 
 # ==============================================================================
-# 🧭 6) SIDEBAR FILTER
+# 🧭 7) SIDEBAR FILTER
 # ==============================================================================
 st.sidebar.header("🎛️ Filter Analisis Harian")
 
@@ -275,7 +316,7 @@ if st.sidebar.button("🔄 Refresh Data (Tarik Ulang dari GDrive)"):
     st.cache_data.clear()
     st.rerun()
 
-# PERUBAHAN: Pindahkan pengecekan df.empty ke sini
+# Pindahkan pengecekan df.empty ke sini
 if df.empty:
     st.warning("⚠️ Data belum berhasil dimuat. Silakan cek 'secrets.toml' dan izin GDrive Anda, lalu klik 'Refresh Data'.")
     st.stop() # Hentikan eksekusi skrip jika data gagal dimuat
@@ -334,7 +375,8 @@ if selected_sectors:
 if selected_signals:
     df_filtered = df_filtered[df_filtered["Final Signal"].isin(selected_signals)]
 
-df_filtered = df_filtered[df_filtered["Volume Spike (x)"] >= min_spike]
+if min_spike > 1.0:
+    df_filtered = df_filtered[df_filtered["Volume Spike (x)"] >= min_spike]
 
 if show_only_spike:
     df_filtered = df_filtered[df_filtered["Unusual Volume"] == True]
@@ -344,11 +386,13 @@ if show_only_spike:
 # ==============================================================================
 st.caption(f"Menampilkan data untuk tanggal: **{selected_date.strftime('%d %B %Y')}**")
 
-tab1, tab2, tab3, tab4 = st.tabs([
+# PERUBAHAN: Menambahkan Tab 5
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 **Dashboard Harian**",
     "📈 **Analisis Individual**",
     "📋 **Data Filter**",
-    "🏆 **Saham Potensial (TOP 20)**"
+    "🏆 **Saham Potensial (TOP 20)**",
+    "🌊 **Analisis NFF**" # <-- TAB BARU
 ])
 
 # --- TAB 1: DASHBOARD HARIAN ---
@@ -550,10 +594,10 @@ with tab4:
     st.subheader("🏆 Top 20 Saham Paling Potensial (Overall)")
     st.info(f"Kalkulasi skor ini didasarkan pada data 30 hari terakhir, dihitung dari tanggal data terbaru ({max_date.strftime('%d %B %Y')}).")
     
-    # PERUBAHAN: Panggil fungsi kalkulasi skor dan tangkap statusnya
+    # Panggil fungsi kalkulasi skor dan tangkap statusnya
     df_top20, score_msg, score_status = calculate_potential_score(df, pd.Timestamp(max_date))
     
-    # PERUBAHAN: Tampilkan notifikasi (toast/warning) di sini
+    # Tampilkan notifikasi (toast/warning) di sini
     if score_status == "success":
         st.toast(score_msg, icon="🏆")
     elif score_status == "warning":
@@ -577,5 +621,56 @@ with tab4:
             }
         )
     else:
-        # Peringatan sudah ditampilkan di atas, tapi ini sebagai fallback
         st.warning("Gagal menghitung skor. Periksa apakah data cukup.")
+
+# --- TAB 5: ANALISIS NFF (BARU) ---
+with tab5:
+    st.subheader("🌊 Top Akumulasi Net Foreign Flow (NFF)")
+    st.info(f"Dihitung berdasarkan data akumulasi dari tanggal data terbaru ({max_date.strftime('%d %B %Y')}) ke belakang.")
+    
+    # Panggil fungsi kalkulasi NFF
+    df_7d, df_30d, df_90d, df_180d = calculate_nff_top_stocks(df, pd.Timestamp(max_date))
+    
+    # Konfigurasi kolom
+    nff_column_config = {
+        "Stock Code": st.column_config.TextColumn("Saham"),
+        "Total Net FF (Shares)": st.column_config.NumberColumn("Total Net FF", format="%d"),
+        "Harga Terakhir": st.column_config.NumberColumn("Harga", format="Rp %d"),
+        "Sector": st.column_config.TextColumn("Sektor")
+    }
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**1 Minggu Terakhir (7 Hari)**")
+        st.dataframe(
+            df_7d.head(20),
+            use_container_width=True,
+            hide_index=True,
+            column_config=nff_column_config
+        )
+        
+        st.markdown("**3 Bulan Terakhir (90 Hari)**")
+        st.dataframe(
+            df_90d.head(20),
+            use_container_width=True,
+            hide_index=True,
+            column_config=nff_column_config
+        )
+
+    with col2:
+        st.markdown("**1 Bulan Terakhir (30 Hari)**")
+        st.dataframe(
+            df_30d.head(20),
+            use_container_width=True,
+            hide_index=True,
+            column_config=nff_column_config
+        )
+        
+        st.markdown("**6 Bulan Terakhir (180 Hari)**")
+        st.dataframe(
+            df_180d.head(20),
+            use_container_width=True,
+            hide_index=True,
+            column_config=nff_column_config
+        )
