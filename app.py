@@ -432,7 +432,7 @@ with tab1:
                 hide_index=True,
                 column_config={
                     "Stock Code": st.column_config.TextColumn("Saham"),
-                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'d"),
+                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
                     "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
                 }
             )
@@ -446,7 +446,7 @@ with tab1:
                 hide_index=True,
                 column_config={
                     "Stock Code": st.column_config.TextColumn("Saham"),
-                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'d"),
+                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
                     "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
                 }
             )
@@ -460,8 +460,8 @@ with tab1:
                 hide_index=True,
                 column_config={
                     "Stock Code": st.column_config.TextColumn("Saham"),
-                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'d"),
-                    "Value": st.column_config.NumberColumn("Nilai", format="Rp %'d")
+                    "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
+                    "Value": st.column_config.NumberColumn("Nilai", format="Rp %'.0f") # PERUBAHAN: d -> .0f
                 }
             )
 
@@ -602,11 +602,11 @@ with tab3:
         hide_index=True,
         column_config={
             "Stock Code": st.column_config.TextColumn("Saham"),
-            "Close": st.column_config.NumberColumn("Harga", format="Rp %'d"),
+            "Close": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
             "Change %": st.column_config.NumberColumn("Change %", format="%.2f"),
-            "Value": st.column_config.NumberColumn("Nilai", format="Rp %'d"),
-            "Net Foreign Flow": st.column_config.NumberColumn("Net FF (Shares)", format="%'d"), # (Shares)
-            "NFF (Rp)": st.column_config.NumberColumn("Net FF (Rp)", format="Rp %'d"), # (Rupiah)
+            "Value": st.column_config.NumberColumn("Nilai", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
+            "Net Foreign Flow": st.column_config.NumberColumn("Net FF (Shares)", format="%'d"), # Biarkan 'd' (integer)
+            "NFF (Rp)": st.column_config.NumberColumn("Net FF (Rp)", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
             "Volume Spike (x)": st.column_config.NumberColumn("Spike (x)", format="%.1fx")
         }
     )
@@ -635,9 +635,9 @@ with tab4:
                 "Potential Score": st.column_config.NumberColumn("Skor", format="%.2f", help="Skor gabungan dari Trend, Momentum, NBSA, dll."),
                 "Trend Score": st.column_config.NumberColumn("Skor Trend (30h)", format="%.2f"),
                 "Momentum Score": st.column_config.NumberColumn("Skor Momentum (7h)", format="%.2f"),
-                "total_net_ff_30d_rp": st.column_config.NumberColumn("Net FF (30h, Rp)", format="Rp %'d"), # (Rp)
+                "total_net_ff_30d_rp": st.column_config.NumberColumn("Net FF (30h, Rp)", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
                 "foreign_contrib_pct": st.column_config.NumberColumn("Kontribusi Asing %", format="%.1f%%"),
-                "last_price": st.column_config.NumberColumn("Harga", format="Rp %'d"),
+                "last_price": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
                 "last_final_signal": st.column_config.TextColumn("Signal Terakhir"),
                 "sector": st.column_config.TextColumn("Sektor")
             }
@@ -656,8 +656,8 @@ with tab5:
     # Konfigurasi kolom
     nff_column_config = {
         "Stock Code": st.column_config.TextColumn("Saham"),
-        "Total Net FF (Rp)": st.column_config.NumberColumn("Total Net FF (Rp)", format="Rp %'d"), # (Rp)
-        "Harga Terakhir": st.column_config.NumberColumn("Harga", format="Rp %'d"),
+        "Total Net FF (Rp)": st.column_config.NumberColumn("Total Net FF (Rp)", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
+        "Harga Terakhir": st.column_config.NumberColumn("Harga", format="Rp %'.0f"), # PERUBAHAN: d -> .0f
         "Sector": st.column_config.TextColumn("Sektor")
     }
     
@@ -696,6 +696,7 @@ with tab5:
             hide_index=True,
             column_config=nff_column_config
         )
+
 
 
 
