@@ -308,7 +308,7 @@ selected_stocks = st.sidebar.multiselect(
     placeholder="Ketik kode saham"
 )
 
-selected_sectors = st.sidebar.multiselect(
+selected_sectors = st.sidebar.multiseiytdf.columnslect(
     "Pilih Sektor",
     options=sorted(df_day["Sector"].dropna().unique()),
     placeholder="Pilih sektor"
@@ -429,7 +429,7 @@ with tab1:
                 text='count'
             )
             fig_sig.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
-            # Perbaikan Bug: Hapus tickformat dari sini
+            # Perbaikan Bug: Biarkan Plotly mengatur label sumbu Y secara default
             fig_sig.update_layout(yaxis_title="Jumlah Saham")
             st.plotly_chart(fig_sig, use_container_width=True)
         else:
@@ -448,7 +448,7 @@ with tab1:
                 text='count'
             )
             fig_sec.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
-            # Perbaikan Bug: Hapus tickformat dari sini
+            # Perbaikan Bug: Biarkan Plotly mengatur label sumbu Y secara default
             fig_sec.update_layout(yaxis_title="Jumlah Saham")
             st.plotly_chart(fig_sec, use_container_width=True)
         else:
