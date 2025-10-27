@@ -18,7 +18,7 @@ from googleapiclient.http import MediaIoBaseDownload
 # ⚙️ 2) KONFIGURASI DASHBOARD & G-DRIVE
 # ==============================================================================
 st.set_page_config(
-    page_title="📊 Dashboard Analisis Saham IDX",
+    page_title="📊 Dashboard Analisis Code IDX",
     layout="wide",
     page_icon="📈"
 )
@@ -280,8 +280,8 @@ def calculate_mfv_top_stocks(df: pd.DataFrame, max_date: pd.Timestamp):
 # ==============================================================================
 # 💎 5) LAYOUT UTAMA (HEADER)
 # ==============================================================================
-st.title("📈 Dashboard Analisis Saham IDX")
-st.caption("Menganalisis data historis harian untuk menemukan saham potensial.")
+st.title("📈 Dashboard Analisis Code IDX")
+st.caption("Menganalisis data historis harian untuk menemukan Code potensial.")
 
 df, status_msg, status_level = load_data()
 
@@ -318,9 +318,9 @@ df_day = df[df['Last Trading Date'].dt.date == selected_date].copy()
 # Filter Lanjutan (untuk Tab 3)
 st.sidebar.header("Filter Data Lanjutan (u/ Tab 3)")
 selected_stocks_filter = st.sidebar.multiselect(
-    "Pilih Saham (Stock Code)",
+    "Pilih Code (Stock Code)",
     options=sorted(df_day["Stock Code"].dropna().unique()),
-    placeholder="Ketik kode saham",
+    placeholder="Ketik kode Code",
     key="filter_stock_multiselect"
 )
 selected_sectors_filter = st.sidebar.multiselect(
@@ -378,7 +378,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 **Dashboard Harian**",
     "📈 **Analisis Individual**",
     "📋 **Data Filter**",
-    "🏆 **Saham Potensial (TOP 20)**",
+    "🏆 **Code Potensial (TOP 20)**",
     "🌊 **Analisis NFF (Rp)**",
     "💰 **Analisis Money Flow (Rp)**"
 ])
@@ -390,9 +390,9 @@ with tab1:
         st.warning(f"Tidak ada data transaksi untuk tanggal {selected_date.strftime('%d-%m-%Y')}.")
     else:
         col1, col2, col3 = st.columns(3)
-        col1.metric("Total Saham Aktif", f"{len(df_day['Stock Code'].unique()):,.0f}")
+        col1.metric("Total Code Aktif", f"{len(df_day['Stock Code'].unique()):,.0f}")
         unusual_vol_count = int(df_day['Unusual Volume'].sum()) if 'Unusual Volume' in df_day.columns else 0
-        col2.metric("Saham Unusual Volume", f"{unusual_vol_count:,}")
+        col2.metric("Code Unusual Volume", f"{unusual_vol_count:,}")
         total_value_today = df_day['Value'].sum() if 'Value' in df_day.columns else 0
         col3.metric("Total Nilai Transaksi", f"Rp {total_value_today:,.0f}" if pd.notna(total_value_today) else "Rp 0")
         st.markdown("---")
@@ -418,7 +418,7 @@ with tab1:
             if 'Change %' in df_day.columns:
                 top_gainers = df_day.sort_values("Change %", ascending=False).head(10)
                 st.dataframe(format_movers_df(top_gainers), use_container_width=True, hide_index=True,
-                             column_config={"Stock Code": "Saham","Close": "Harga","Change %": st.column_config.NumberColumn("Change %", format="%.2f")})
+                             column_config={"Stock Code": "Code","Close": "Harga","Change %": st.column_config.NumberColumn("Change %", format="%.2f")})
             else: st.warning("Kolom 'Change %' tidak ditemukan.")
 
         with col_l:
@@ -426,7 +426,7 @@ with tab1:
             if 'Change %' in df_day.columns:
                 top_losers = df_day.sort_values("Change %", ascending=True).head(10)
                 st.dataframe(format_movers_df(top_losers), use_container_width=True, hide_index=True,
-                             column_config={"Stock Code": "Saham","Close": "Harga","Change %": st.column_config.NumberColumn("Change %", format="%.2f")})
+                             column_config={"Stock Code": "Code","Close": "Harga","Change %": st.column_config.NumberColumn("Change %", format="%.2f")})
             else: st.warning("Kolom 'Change %' tidak ditemukan.")
 
         with col_v:
@@ -434,7 +434,7 @@ with tab1:
             if 'Value' in df_day.columns:
                 top_value = df_day.sort_values("Value", ascending=False).head(10)
                 st.dataframe(format_movers_df(top_value, value_col='Value'), use_container_width=True, hide_index=True,
-                             column_config={"Stock Code": "Saham","Close": "Harga","Value": "Nilai"})
+                             column_config={"Stock Code": "Code","Close": "Harga","Value": "Nilai"})
             else: st.warning("Kolom 'Value' tidak ditemukan.")
 
         st.markdown("---")
@@ -446,7 +446,7 @@ with tab1:
                 signal_counts = df_day["Final Signal"].value_counts().reset_index()
                 fig_sig = px.bar(signal_counts, x="Final Signal", y="count", text='count')
                 fig_sig.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
-                fig_sig.update_layout(yaxis_title="Jumlah Saham", yaxis=dict(showticklabels=True))
+                fig_sig.update_layout(yaxis_title="Jumlah Code", yaxis=dict(showticklabels=True))
                 st.plotly_chart(fig_sig, use_container_width=True)
             else: st.warning("Kolom 'Final Signal' tidak ditemukan.")
         with col_sec:
@@ -457,16 +457,16 @@ with tab1:
                     sector_counts = spike_df["Sector"].value_counts().reset_index()
                     fig_sec = px.bar(sector_counts, x="Sector", y="count", text='count')
                     fig_sec.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
-                    fig_sec.update_layout(yaxis_title="Jumlah Saham", yaxis=dict(showticklabels=True))
+                    fig_sec.update_layout(yaxis_title="Jumlah Code", yaxis=dict(showticklabels=True))
                     st.plotly_chart(fig_sec, use_container_width=True)
                 else: st.info("Tidak ada unusual volume hari ini.")
             else: st.warning("Kolom 'Sector'/'Unusual Volume' tidak ditemukan.")
 
 # --- TAB 2: ANALISIS INDIVIDUAL ---
 with tab2:
-    st.subheader("Analisis Time Series Saham Individual")
+    st.subheader("Analisis Time Series Code Individual")
     all_stocks = sorted(df["Stock Code"].dropna().unique())
-    stock_to_analyze = st.selectbox("Pilih Saham:", all_stocks, index=all_stocks.index("AADI") if "AADI" in all_stocks else 0, key="individual_stock_select")
+    stock_to_analyze = st.selectbox("Pilih Code:", all_stocks, index=all_stocks.index("AADI") if "AADI" in all_stocks else 0, key="individual_stock_select")
 
     if stock_to_analyze:
         df_stock = df[df['Stock Code'] == stock_to_analyze].sort_values('Last Trading Date')
@@ -481,7 +481,7 @@ with tab2:
             st.markdown(f"**Analisis: {stock_to_analyze} ({stock_sector})**")
             col1, col2, col3 = st.columns(3)
             col1.metric("Harga Terakhir", f"Rp {latest_price:,.0f}" if pd.notna(latest_price) else "N/A")
-            col2.metric("Free Float Saham", f"{free_float:.2f}%" if pd.notna(free_float) else "N/A")
+            col2.metric("Free Float Code", f"{free_float:.2f}%" if pd.notna(free_float) else "N/A")
             col3.metric("Sektor", stock_sector if pd.notna(stock_sector) else "N/A")
             st.markdown("---")
 
@@ -567,7 +567,7 @@ with tab3:
         df_display_filtered,
         use_container_width=True, hide_index=True,
         column_config={
-            "Stock Code": st.column_config.TextColumn("Saham"),
+            "Stock Code": st.column_config.TextColumn("Code"),
             "Close": st.column_config.TextColumn("Harga"),
             "Change %": st.column_config.NumberColumn("Change %", format="%.2f"),
             "Value": st.column_config.TextColumn("Nilai"),
@@ -583,9 +583,9 @@ with tab3:
         }
     )
 
-# --- TAB 4: SAHAM POTENSIAL (TOP 20) ---
+# --- TAB 4: Code POTENSIAL (TOP 20) ---
 with tab4:
-    st.subheader("🏆 Top 20 Saham Paling Potensial (Overall)")
+    st.subheader("🏆 Top 20 Code Paling Potensial (Overall)")
     st.info(f"Kalkulasi skor dari data 30 hari terakhir ({max_date.strftime('%d %B %Y')}).")
     df_top20, score_msg, score_status = calculate_potential_score(df, pd.Timestamp(max_date))
     if score_status == "success": st.toast(score_msg, icon="🏆")
@@ -597,7 +597,7 @@ with tab4:
             if col in df_top20_display.columns:
                 df_top20_display[col] = df_top20_display[col].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else 'N/A')
         st.dataframe(df_top20_display, use_container_width=True, hide_index=True,
-                     column_config={ "Stock Code": "Saham", "Potential Score": st.column_config.NumberColumn("Skor", format="%.2f"),
+                     column_config={ "Stock Code": "Code", "Potential Score": st.column_config.NumberColumn("Skor", format="%.2f"),
                                      "Trend Score": st.column_config.NumberColumn("Skor Trend", format="%.2f"),
                                      "Momentum Score": st.column_config.NumberColumn("Skor Mom", format="%.2f"),
                                      "total_net_ff_30d_rp": "NFF 30h (Rp)", "foreign_contrib_pct": st.column_config.NumberColumn("Kontr. Asing %", format="%.1f%%"),
@@ -615,7 +615,7 @@ with tab5:
              if flow_col_name in df_display.columns: df_display[flow_col_name] = df_display[flow_col_name].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else 'N/A')
              if 'Harga Terakhir' in df_display.columns: df_display['Harga Terakhir'] = df_display['Harga Terakhir'].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else 'N/A')
              return df_display
-        nff_col_config = { "Stock Code": "Saham", "Total Net FF (Rp)": "Total NFF (Rp)", "Harga Terakhir": "Harga", "Sector": "Sektor" }
+        nff_col_config = { "Stock Code": "Code", "Total Net FF (Rp)": "Total NFF (Rp)", "Harga Terakhir": "Harga", "Sector": "Sektor" }
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("**1 Minggu (7 Hari)**"); st.dataframe(format_flow_agg_df(df_nff_7d, 'Total Net FF (Rp)'), use_container_width=True, hide_index=True, column_config=nff_col_config)
@@ -635,7 +635,7 @@ with tab6:
     st.markdown("**Top Akumulasi Money Flow Value (MFV)**")
     try:
         df_mfv_7d, df_mfv_30d, df_mfv_90d, df_mfv_180d = calculate_mfv_top_stocks(df, pd.Timestamp(max_date))
-        mfv_col_config = { "Stock Code": "Saham", "Total Money Flow (Rp)": "Total MFV (Rp)", "Harga Terakhir": "Harga", "Sector": "Sektor" }
+        mfv_col_config = { "Stock Code": "Code", "Total Money Flow (Rp)": "Total MFV (Rp)", "Harga Terakhir": "Harga", "Sector": "Sektor" }
         col1_mfv, col2_mfv = st.columns(2)
         with col1_mfv:
             st.markdown("**1 Minggu (7 Hari)**"); st.dataframe(format_flow_agg_df(df_mfv_7d, 'Total Money Flow (Rp)'), use_container_width=True, hide_index=True, column_config=mfv_col_config)
@@ -660,7 +660,7 @@ with tab6:
              return df_display
              
         ratio_col_config = {
-             "Stock Code": st.column_config.TextColumn("Saham"),
+             "Stock Code": st.column_config.TextColumn("Code"),
              "Close": st.column_config.TextColumn("Harga"),
              "Money Flow Ratio (20D)": st.column_config.NumberColumn("Rasio MF (20D)", format="%.3f"), # 3 desimal
              "Sector": st.column_config.TextColumn("Sektor")
