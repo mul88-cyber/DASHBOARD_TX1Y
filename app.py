@@ -18,7 +18,7 @@ from googleapiclient.http import MediaIoBaseDownload
 # ⚙️ 2) KONFIGURASI DASHBOARD & G-DRIVE
 # ==============================================================================
 st.set_page_config(
-    page_title="📊 Dashboard Analisis Saham IDX",
+    page_title="📊 Dashboard Analisis Code IDX",
     layout="wide",
     page_icon="📈"
 )
@@ -322,8 +322,8 @@ def calculate_nff_top_stocks(df: pd.DataFrame, max_date: pd.Timestamp):
 # ==============================================================================
 # 💎 6) LAYOUT UTAMA (HEADER)
 # ==============================================================================
-st.title("📈 Dashboard Analisis Saham IDX")
-st.caption("Menganalisis data historis harian untuk menemukan saham potensial.")
+st.title("📈 Dashboard Analisis Code IDX")
+st.caption("Menganalisis data historis harian untuk menemukan Code potensial.")
 
 # Pindahkan pemanggilan status ke sini, di luar cache
 status_container = st.empty()
@@ -366,9 +366,9 @@ df_day = df[df['Last Trading Date'].dt.date == selected_date].copy()
 # --- Filter Lanjutan (untuk Tab 3) ---
 st.sidebar.header("Filter Data Lanjutan (u/ Tab 3)")
 selected_stocks = st.sidebar.multiselect(
-    "Pilih Saham (Stock Code)",
+    "Pilih Code (Stock Code)",
     options=sorted(df_day["Stock Code"].dropna().unique()),
-    placeholder="Ketik kode saham"
+    placeholder="Ketik kode Code"
 )
 
 selected_sectors = st.sidebar.multiselect(
@@ -420,7 +420,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 **Dashboard Harian**",
     "📈 **Analisis Individual**",
     "📋 **Data Filter**",
-    "🏆 **Saham Potensial (TOP 20)**",
+    "🏆 **Code Potensial (TOP 20)**",
     "🌊 **Analisis NFF (Rp)**" 
 ])
 
@@ -432,8 +432,8 @@ with tab1:
         st.warning(f"Tidak ada data transaksi untuk tanggal {selected_date.strftime('%d-%m-%Y')}.")
     else:
         col1, col2, col3 = st.columns(3)
-        col1.metric("Total Saham Aktif", f"{len(df_day['Stock Code'].unique()):,.0f}")
-        col2.metric("Saham Unusual Volume", f"{int(df_day['Unusual Volume'].sum()):,.0f}")
+        col1.metric("Total Code Aktif", f"{len(df_day['Stock Code'].unique()):,.0f}")
+        col2.metric("Code Unusual Volume", f"{int(df_day['Unusual Volume'].sum()):,.0f}")
         
         # --- PERBAIKAN MANUAL FORMAT (METRIC) ---
         metric_value = df_day['Value'].sum()
@@ -459,7 +459,7 @@ with tab1:
                 use_container_width=True, 
                 hide_index=True,
                 column_config={
-                    "Stock Code": st.column_config.TextColumn("Saham"),
+                    "Stock Code": st.column_config.TextColumn("Code"),
                     "Close": st.column_config.TextColumn("Harga"), # Tampilkan sebagai Teks
                     "Change %": st.column_config.NumberColumn("Change %", format="%.2f") # Angka bisa diformat
                 }
@@ -478,7 +478,7 @@ with tab1:
                 use_container_width=True, 
                 hide_index=True,
                 column_config={
-                    "Stock Code": st.column_config.TextColumn("Saham"),
+                    "Stock Code": st.column_config.TextColumn("Code"),
                     "Close": st.column_config.TextColumn("Harga"), # Tampilkan sebagai Teks
                     "Change %": st.column_config.NumberColumn("Change %", format="%.2f")
                 }
@@ -498,7 +498,7 @@ with tab1:
                 use_container_width=True, 
                 hide_index=True,
                 column_config={
-                    "Stock Code": st.column_config.TextColumn("Saham"),
+                    "Stock Code": st.column_config.TextColumn("Code"),
                     "Close": st.column_config.TextColumn("Harga"), # Tampilkan sebagai Teks
                     "Value": st.column_config.TextColumn("Nilai")  # Tampilkan sebagai Teks
                 }
@@ -510,7 +510,7 @@ with tab1:
         col_sig, col_sec = st.columns(2)
         
         with col_sig:
-            st.markdown("**Distribusi Final Signal (Semua Saham)**")
+            st.markdown("**Distribusi Final Signal (Semua Code)**")
             if not df_day.empty and 'Final Signal' in df_day.columns:
                 signal_counts = df_day["Final Signal"].value_counts().reset_index()
                 fig_sig = px.bar(
@@ -521,7 +521,7 @@ with tab1:
                     text='count'
                 )
                 fig_sig.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
-                fig_sig.update_layout(yaxis_title="Jumlah Saham", yaxis=dict(showticklabels=True))
+                fig_sig.update_layout(yaxis_title="Jumlah Code", yaxis=dict(showticklabels=True))
                 st.plotly_chart(fig_sig, use_container_width=True)
 
         with col_sec:
@@ -537,27 +537,27 @@ with tab1:
                     text='count'
                 )
                 fig_sec.update_traces(texttemplate='%{text:,.0f}', textposition='outside', hovertemplate='<b>%{x}</b><br>Jumlah: %{y:,.0f}<extra></extra>')
-                fig_sec.update_layout(yaxis_title="Jumlah Saham", yaxis=dict(showticklabels=True))
+                fig_sec.update_layout(yaxis_title="Jumlah Code", yaxis=dict(showticklabels=True))
                 st.plotly_chart(fig_sec, use_container_width=True)
             else:
-                st.info("Tidak ada saham dengan 'Unusual Volume' pada tanggal ini.")
+                st.info("Tidak ada Code dengan 'Unusual Volume' pada tanggal ini.")
 
 # --- TAB 2: ANALISIS INDIVIDUAL ---
 with tab2:
-    st.subheader("Analisis Time Series Saham Individual")
+    st.subheader("Analisis Time Series Code Individual")
     
     all_stocks = sorted(df["Stock Code"].dropna().unique())
     
     if not all_stocks:
-        st.warning("Tidak ada data saham untuk dipilih.")
+        st.warning("Tidak ada data Code untuk dipilih.")
     else:
-        # Cari 'AADI' atau default ke saham pertama
+        # Cari 'AADI' atau default ke Code pertama
         default_index = 0
         if "AADI" in all_stocks:
             default_index = all_stocks.index("AADI")
             
         stock_to_analyze = st.selectbox(
-            "Pilih Saham untuk dianalisis:",
+            "Pilih Code untuk dianalisis:",
             all_stocks,
             index=default_index
         )
@@ -568,7 +568,7 @@ with tab2:
             if df_stock.empty:
                 st.warning(f"Tidak ditemukan data historis untuk {stock_to_analyze}")
             else:
-                # Menampilkan kode saham, bukan 'Company Name'
+                # Menampilkan kode Code, bukan 'Company Name'
                 st.info(f"Menampilkan data untuk: **{stock_to_analyze}**")
                 
                 # --- Buat Subplot Gabungan ---
@@ -668,7 +668,7 @@ with tab3:
         use_container_width=True,
         hide_index=True,
         column_config={
-            "Stock Code": st.column_config.TextColumn("Saham"),
+            "Stock Code": st.column_config.TextColumn("Code"),
             "Close": st.column_config.TextColumn("Harga"), # Tampilkan sebagai Teks
             "Change %": st.column_config.NumberColumn("Change %", format="%.2f"),
             "Value": st.column_config.TextColumn("Nilai"), # Tampilkan sebagai Teks
@@ -679,9 +679,9 @@ with tab3:
         }
     )
 
-# --- TAB 4: SAHAM POTENSIAL (TOP 20) ---
+# --- TAB 4: Code POTENSIAL (TOP 20) ---
 with tab4:
-    st.subheader("🏆 Top 20 Saham Paling Potensial (Overall)")
+    st.subheader("🏆 Top 20 Code Paling Potensial (Overall)")
     st.info(f"Kalkulasi skor ini didasarkan pada data 30 hari terakhir, dihitung dari tanggal data terbaru ({max_date.strftime('%d %B %Y')}).")
     
     # Panggil fungsi kalkulasi skor (pakai NFF Rp)
@@ -705,7 +705,7 @@ with tab4:
             use_container_width=True,
             hide_index=True,
             column_config={
-                "Stock Code": st.column_config.TextColumn("Saham"),
+                "Stock Code": st.column_config.TextColumn("Code"),
                 "Potential Score": st.column_config.NumberColumn("Skor", format="%.2f", help="Skor gabungan dari Trend, Momentum, NBSA, dll."),
                 "Trend Score": st.column_config.NumberColumn("Skor Trend (30h)", format="%.2f"),
                 "Momentum Score": st.column_config.NumberColumn("Skor Momentum (7h)", format="%.2f"),
@@ -736,7 +736,7 @@ with tab5:
 
     # Konfigurasi kolom (sekarang hanya untuk rename)
     nff_column_config = {
-        "Stock Code": st.column_config.TextColumn("Saham"),
+        "Stock Code": st.column_config.TextColumn("Code"),
         "Total Net FF (Rp)": st.column_config.TextColumn("Total Net FF (Rp)"), # Tampilkan sebagai Teks
         "Harga Terakhir": st.column_config.TextColumn("Harga"), # Tampilkan sebagai Teks
         "Sector": st.column_config.TextColumn("Sektor")
